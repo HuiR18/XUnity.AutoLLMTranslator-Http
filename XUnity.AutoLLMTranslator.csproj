@@ -18,12 +18,6 @@
 		<Reference Include="XUnity.Common">
 			<HintPath>packages\XUnity.Common.dll</HintPath>
 		</Reference>
-    <Reference Include="UnityEngine">
-      <HintPath>packages\UnityEngine.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>packages\UnityEngine.CoreModule.dll</HintPath>
-    </Reference>
 	</ItemGroup>
 
 	<ItemGroup>
