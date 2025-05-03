@@ -45,7 +45,7 @@ Additionally, add the following configurations:
 - `APIKey`：LLM 服务器的 API 密钥。  API key for the LLM server.  
 - `Model`：用于翻译的模型。  The model used for translation.  
 - `Requirement`：额外的翻译需求或指令，例如:使用莎士比亚的风格进行翻译。  Additional translation requirements or instructions, e.g., translating in Shakespearean style.   
-- `Terminology`：术语表，使用|隔开不同术语，使用==连接原文和翻译。Terminology list, with different terms separated by `|` and original text and translation connected by `==`.    
+- `Terminology`：术语表，使用|隔开不同术语，使用==连接原文和翻译。例如：Lorien==罗林|Skadi==斯卡蒂  。Terminology list, with different terms separated by `|` and original text and translation connected by `==`,e.g.,Lorien==罗林|Skadi==斯卡蒂.    
 - `URL`：LLM 服务器的 URL，一般以/v1结尾。也可以是/chat/completions的完整路径。  URL of the LLM server, usually ending with `/v1`. It can also be the full path to `/chat/completions`.  
 - `GameName`: 游戏名字  Name of the game  
 - `GameDesc`：游戏介绍，用于帮助AI进行更准确的翻译，可以对游戏的玩法/类型/风格进行描述。 Game description to help the AI perform more accurate translations. It can describe gameplay, type, or style.    
@@ -78,8 +78,8 @@ FromLanguage=en
 APIKey= <KEY>  
 Model=qwen-turbo  
 URL=https://dashscope.aliyuncs.com/compatible-mode/v1  
-Requirement=把所有名字都翻译成中文/no_think  
-Terminology=Lorien==罗林|Skadi==斯卡蒂  
+Requirement=/no_think  
+Terminology=
 GameName=DeathMustDie  
 GameDesc=一个刷装备打怪的游戏、暗黑破坏神的风格和元素  
 HalfWidth=True  
@@ -110,6 +110,20 @@ Of course, because the plugin provides strong fault tolerance, using lower model
 如果本地设备较差，还是推荐网络服务，比如qwen-turbo非常便宜，很多厂商甚至有免费的小模型可以使用。  
 If the local device is poor, it is still recommended to use network services, such as qwen-turbo, which is very cheap, and many vendors even offer free small models.  
 
+## 如何获得模型  
+## How to Obtain Models  
+### 免费的方式  
+### Free Methods  
+- openroute、siliconflow等地方都提供了免费的模型可以使用  
+  Openroute and Siliconflow provide free models for use.  
+- 阿里云等云服务商应该了提供了大量的免费额度  
+  Cloud service providers like Alibaba Cloud offer generous free quotas.  
+- 通过ollama等工具进行本地部署  
+  Deploy locally using tools like Ollama.
+### 付费的方式
+- 去模型提供商付费  
+  Pay the model provider.
+
 ## 可能的问题  
 ## Possible Issues  
 - 无法翻译/翻译异常：  
@@ -128,6 +142,8 @@ If the local device is poor, it is still recommended to use network services, su
       Check if the LLM provider's limits, such as QPM, TPM, etc., have been triggered. In this case, you need to adjust the relevant Config settings.  
     3.本地LLM服务器是否有足够的硬件支持。  
       Ensure that the local LLM server has sufficient hardware support.  
+    4.使用了think模型，大部分情况下都不需要用到think，在qwen3下可以使用/no_think来进行关闭。  
+      Using the think model is generally unnecessary in most cases. For qwen3, you can disable it using /no_think.
 - 插件被关闭：  
   Plugin is disabled:  
     虽然插件会尽力避免失败，但是出现太多失败后AutoTranslator会自动关闭插件,这个时候需要重启游戏/插件。  
@@ -145,4 +161,4 @@ This plugin is developed based on XUnity.AutoTranslator.
 同时也使用了FuzzyString(https://github.com/kdjones/fuzzystring)来实现文本搜索。  
 It also uses FuzzyString (https://github.com/kdjones/fuzzystring) for text search.  
 感谢他们的付出  
-Thanks to them for their contributions.  
+Thanks to them for their contributions.
