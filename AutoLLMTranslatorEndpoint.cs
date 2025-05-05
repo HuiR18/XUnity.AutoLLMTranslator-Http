@@ -6,8 +6,11 @@ using XUnity.AutoTranslator.Plugin.Core.Endpoints.Www;
 internal class LLMTranslatorEndpoint : WwwEndpoint
 {
 
+    #region Since all batching and concurrency are handled within TranslatorTask, please do not modify these two parameters.
     public override int MaxTranslationsPerRequest => 1;
     public override int MaxConcurrency => 100;
+
+    #endregion
 
     public override string Id => "AutoLLMTranslate";
 
