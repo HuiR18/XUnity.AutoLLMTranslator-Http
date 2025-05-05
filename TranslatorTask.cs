@@ -103,7 +103,7 @@ public class TranslatorTask
         {
             _url += "chat/completions";
         }
-        
+
         DestinationLanguage = context.DestinationLanguage;
         SourceLanguage = context.SourceLanguage;
         if (string.IsNullOrEmpty(_apiKey) && !_url.Contains("localhost") && !_url.Contains("127.0.0.1") && !_url.Contains("192.168."))
@@ -113,7 +113,7 @@ public class TranslatorTask
         translateDB.Init(context, _terminology);
 
         listener = new HttpListener();
-        listener.Prefixes.Add("http://localhost:20000/");
+        listener.Prefixes.Add("http://+:20000/");
         // 启动监听
         listener.Start();
         Log("Listening for requests on http://localhost:20000/");
