@@ -106,7 +106,7 @@ public class TranslatorTask
         
         DestinationLanguage = context.DestinationLanguage;
         SourceLanguage = context.SourceLanguage;
-        if (string.IsNullOrEmpty(_apiKey))
+        if (string.IsNullOrEmpty(_apiKey) && !_url.Contains("localhost") && !_url.Contains("127.0.0.1") && !_url.Contains("192.168."))
         {
             throw new Exception("The AutoLLM endpoint requires an API key which has not been provided.");
         }

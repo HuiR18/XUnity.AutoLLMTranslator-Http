@@ -42,7 +42,7 @@ Modify the following configuration in the `Config.ini` file:
 同时需要添加以下配置：  
 Additionally, add the following configurations:  
 - [AutoLLM]：配置头  Configuration header  
-- `APIKey`：LLM 服务器的 API 密钥，如果不需要key，请填入一个任意值。  API key for the LLM server, if no key is required, enter any value.  
+- `APIKey`：LLM 服务器的 API 密钥。  API key for the LLM server  
 - `Model`：用于翻译的模型。  The model used for translation.  
 - `Requirement`：额外的翻译需求或指令，例如:使用莎士比亚的风格进行翻译。  Additional translation requirements or instructions, e.g., translating in Shakespearean style.   
 - `Terminology`：术语表，使用|隔开不同术语，使用==连接原文和翻译。例如：Lorien==罗林|Skadi==斯卡蒂  。Terminology list, with different terms separated by `|` and original text and translation connected by `==`,e.g.,Lorien==罗林|Skadi==斯卡蒂.    
@@ -96,8 +96,7 @@ MaxRetry=10
 In addition to using LLM remote services, you can also use local services like ollama,  
 只需要填写Model和URL即可  
 Just fill in the Model and URL  
-一般来说不需要key，那么请填入一个任意值，否则会触发关于key的报错。
-if no key is required, enter any value.  
+
 
 ## 关于LLM大模型建议  
 ## Recommendations for Large LLM Models  
