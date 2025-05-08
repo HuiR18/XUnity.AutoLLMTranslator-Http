@@ -1,6 +1,7 @@
 # XUnity.AutoLLMTranslator
 
 ## 概述  
+## Overview
 XUnity.AutoLLMTranslator 是一个用于 XUnity.AutoTranslator 框架的插件，它通过大型语言模型（LLM）实现游戏文本翻译。  
 XUnity.AutoLLMTranslator is a plugin for the XUnity.AutoTranslator framework that enables game text translation using large language models (LLM).  
 
@@ -8,6 +9,7 @@ XUnity.AutoLLMTranslator is a plugin for the XUnity.AutoTranslator framework tha
 This plugin offers high-performance and customizable translation features.  
 
 ## 特性  
+## Features
 - **支持远程api及本地服务器**  
   **Supports remote APIs and local servers**  
 - **使用了完全独立于AutoTranslator的批处理机制实现了高效的翻译功能**  
@@ -20,6 +22,7 @@ This plugin offers high-performance and customizable translation features.
   **Supports custom terminology and other features for more personalized translations**  
 
 ## 安装  
+## Installation
 1. 在游戏中安装 XUnity.AutoTranslator(https://github.com/bbepis/XUnity.AutoTranslator) 框架。  
    Install the XUnity.AutoTranslator framework (https://github.com/bbepis/XUnity.AutoTranslator) in the game.  
 2. 将 `XUnity.AutoLLMTranslator.dll` 文件复制到的插件文件夹中:  
@@ -42,19 +45,24 @@ Modify the following configuration in the `Config.ini` file:
 同时需要添加以下配置：  
 Additionally, add the following configurations:  
 - [AutoLLM]：配置头  Configuration header  
-- `APIKey`：LLM 服务器的 API 密钥。  API key for the LLM server  
-- `Model`：用于翻译的模型。  The model used for translation.  
+- *`Model`：用于翻译的模型。  The model used for translation.  
+- *`URL`：LLM 服务器的 URL，一般以/v1结尾。也可以是/chat/completions的完整路径。  URL of the LLM server, usually ending with `/v1`. It can also be the full path to `/chat/completions`.  
+- `APIKey`：LLM 服务器的 API 密钥。如果使用本地模型，可以留空。 API key for the LLM server. If using a local model, this can be left blank.
 - `Requirement`：额外的翻译需求或指令，例如:使用莎士比亚的风格进行翻译。  Additional translation requirements or instructions, e.g., translating in Shakespearean style.   
 - `Terminology`：术语表，使用|隔开不同术语，使用==连接原文和翻译。例如：Lorien==罗林|Skadi==斯卡蒂  。Terminology list, with different terms separated by `|` and original text and translation connected by `==`,e.g.,Lorien==罗林|Skadi==斯卡蒂.    
-- `URL`：LLM 服务器的 URL，一般以/v1结尾。也可以是/chat/completions的完整路径。  URL of the LLM server, usually ending with `/v1`. It can also be the full path to `/chat/completions`.  
 - `GameName`: 游戏名字  Name of the game  
 - `GameDesc`：游戏介绍，用于帮助AI进行更准确的翻译，可以对游戏的玩法/类型/风格进行描述。 Game description to help the AI perform more accurate translations. It can describe gameplay, type, or style.    
+- `ModelParams`: 模型参数定制，使用json格式书写，会直接传递给模型api。例如：{"temperature":0.1}  
+  Model parameter customization, written in JSON format, will be directly passed to the model API. For example: {"temperature":0.1}  
 - `MaxWordCount`：每批翻译的最大单词数，适当的单词可以减少并发数量从而提高翻译速度。  Maximum number of words per batch translation. Proper word count can reduce concurrency and improve translation speed. 
 - `ParallelCount`：并行翻译任务的最大数量，一般由LLM的提供商决定。  Maximum number of parallel translation tasks, usually determined by the LLM provider.  
 - `Interval`：轮询间隔（毫秒）,每次翻译的间隔，在间隔中系统会尽可能的合并翻译内容，以便提高翻译速度减少并发，但太长会导致响应不够及时。   Polling interval (in milliseconds). During this interval, the system will try to merge translation content to improve speed and reduce concurrency. However, too long an interval may lead to delayed responses.  
 - `HalfWidth`：是否将全角字符转换为半角，在字体无法显示全角符号的时候使用这个。  Whether to convert full-width characters to half-width. Use this when fonts cannot display full-width symbols.  
 - `MaxRetry`：失败翻译的最大重试次数，一般不动，如果大模型失败率太高，可以尝试提高。  Maximum retry attempts for failed translations. Generally, this should not be changed, but if the large model has a high failure rate, you can try increasing it.  
 - `Debug`：启用或禁用调试日志(AutoLLM.log)。  Enable or disable debug logs(AutoLLM.log).  
+
+** *为必填参数 **  
+** *Required parameters **  
 
 此外，你需要正确的配置：  
 Additionally, you need to configure correctly:  
@@ -63,17 +71,20 @@ Language=zh-cn
 FromLanguage=en
 ```
 ### 范例  
-### Example  
+### Example
+
 ```
 [Service]
 Endpoint=AutoLLMTranslate
-....
 
 [General]
 Language=zh_cn
 FromLanguage=en
-....
+```
 
+完整配置complete configuration:
+
+```
 [AutoLLM]
 APIKey= <KEY>  
 Model=qwen-turbo  
@@ -82,12 +93,21 @@ Requirement=/no_think
 Terminology=
 GameName=DeathMustDie  
 GameDesc=一个刷装备打怪的游戏、暗黑破坏神的风格和元素  
+ModelParams={"temperature":0.1}
 HalfWidth=True  
 MaxWordCount=200  
 ParallelCount=3  
 Interval=200  
 Debug=False  
 MaxRetry=10  
+```
+
+最小配置minimum configuration:
+
+```
+[AutoLLM]
+Model=qwen3:4b
+URL=http://localhost:11434/v1  
 ```
 
 ## 本地 LLM 服务器  
@@ -129,12 +149,26 @@ If the local device is poor, it is still recommended to use network services, su
 ## Possible Issues  
 - 无法翻译/翻译异常：  
   Unable to translate/translation error:  
-    1.请检查你的LLM服务配置是否正确且生效。  
-      Please check if your LLM service configuration is correct and effective.  
-    2.确保20000端口没有被占用。  
-      Ensure that port 20000 is not occupied.  
-    3.是否使用了足够强大的模型。  
-      Check if a sufficiently powerful model is being used.  
+    0. 检查你的 AutoTranslator 是否正确运行，AutoTranslator 目前并不支持 IL2CPP 类型游戏的插件运行。  
+       Verify that your AutoTranslator is functioning correctly. Currently, AutoTranslator does not support plugin operation for IL2CPP games.   
+    1. 请检查你的LLM服务配置是否正确且生效。  
+       Please check if your LLM service configuration is correct and effective.  
+    2. 确保20000端口没有被占用，可以在游戏运行的情况下使用浏览器访问 http://localhost:20000 确认。  
+       Ensure that port 20000 is not occupied. You can confirm this by accessing http://localhost:20000 in a browser while the game is running.  
+    3. 是否使用了足够强大的模型。  
+       Check if a sufficiently powerful model is being used.  
+    4. 缺少Newtonsoft.Json.dll或者Newtonsoft.Json.dll不兼容。
+      - 下载这个文件放到Managed目录下：[Newtonsoft.Json.dll](https://github.com/NothingNullNull/XUnity.AutoLLMTranslator/releases/download/2025%2F5%2F3/Newtonsoft.Json.dll)
+    5. LLM的URL和模型名字是否填写正确：  
+       Check if the LLM URL and model name are correctly filled in:  
+       - 以下URL是正确的：  
+         The following URLs are correct:  
+         http(s)://XXXXXXX/v1  
+         http(s)://XXXXXXX/v1/chat/completions  
+       - 以下URL是错误的：  
+         The following URLs are incorrect:  
+         http(s)://XXXXXXX/v3  
+         http(s)://XXXXXXX/  
 - 翻译很慢：  
   Translation is slow:  
     1.是否使用了过于巨大的模型，我的建议是8b。  

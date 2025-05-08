@@ -66,8 +66,7 @@ public class TranslatorTask
     //使用半角符号
     private bool _halfWidth = true;
     private int _maxRetry = 10;
-
-
+    private string _modelParams = "";
     List<TaskData> taskDatas = new List<TaskData>();
     TranslateDB translateDB = new TranslateDB();
     //Dictionary<string, string> translateData = new Dictionary<string, string>();
@@ -94,6 +93,7 @@ public class TranslatorTask
         _pollingInterval = context.GetOrCreateSetting("AutoLLM", "Interval", 200);
         _halfWidth = context.GetOrCreateSetting("AutoLLM", "HalfWidth", true);
         _maxRetry = context.GetOrCreateSetting("AutoLLM", "MaxRetry", 10);
+        _modelParams = context.GetOrCreateSetting("AutoLLM", "ModelParams", "");
 
         if (_url.EndsWith("/v1"))
         {
@@ -166,6 +166,14 @@ public class TranslatorTask
                     response.ContentLength64 = buffer.Length;
                     response.OutputStream.Write(buffer, 0, buffer.Length);
                 }
+            }
+            if (request.HttpMethod == "GET")
+            {
+                // 处理 GET 请求
+                string responseString = "AutoLLM Translator is running.";
+                byte[] buffer = Encoding.UTF8.GetBytes(responseString);
+                response.ContentLength64 = buffer.Length;
+                response.OutputStream.Write(buffer, 0, buffer.Length);
             }
         }
         catch (Exception ex)
@@ -301,34 +309,46 @@ public class TranslatorTask
                 new { role = "user", content = otxt }
             };
 
-            var requestBody = new
+            var requestBody = new Dictionary<string, object>
             {
-                model = _model,
-                temperature = 0.1,
-                max_tokens = 4000,
-                top_p = 1,
-                frequency_penalty = 0,
-                presence_penalty = 0,
-                messages
+                { "model", _model },
+                { "temperature", 0.1 },
+                { "max_tokens", 4000 },
+                { "top_p", 1 },
+                { "frequency_penalty", 0 },
+                { "presence_penalty", 0 },
+                { "messages", messages }
             };
+            if (!string.IsNullOrEmpty(_modelParams))
+            {
+                try
+                {
+                    var modelParamsData = JsonConvert.DeserializeObject<JObject>(_modelParams);
+                    if (modelParamsData != null)
+                    {
+                        foreach (var item in modelParamsData)
+                            if (item.Value != null)
+                            {
+                                requestBody[item.Key] = item.Value;
+                            }
+                    }
+                }
+                catch (JsonReaderException ex)
+                {
+                    Log($"模型参数解析错误: {ex.Message}");
+                }
+            }
+
 
             var requestData = JsonConvert.SerializeObject(requestBody);
+            //Log($"翻译请求: {requestData}");
             //Log($"翻译请求");
             using (WebClient client = new WebClient())
             {
                 client.Headers[HttpRequestHeader.Authorization] = $"Bearer {_apiKey}";
                 client.Headers[HttpRequestHeader.ContentType] = "application/json";
                 string response = await client.UploadStringTaskAsync(_url, "POST", requestData);
-                //Log($"翻译请求成功: {response}");
-                // bool lasttry = false;
-                // foreach (var task in tasks)
-                // {
-                //     if (task.retryCount == _maxReTryCount - 1)
-                //     {
-                //         lasttry = true;
-                //         break;
-                //     }
-                // }
+                //Log($"翻译结果: {response}");
                 var ttxts = GetTranslatedText(response);
                 if ((ttxts?.Length ?? 0) != texts.Count)
                 {
