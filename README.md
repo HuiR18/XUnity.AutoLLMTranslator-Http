@@ -12,10 +12,12 @@ This plugin offers high-performance and customizable translation features.
 ## Features
 - **支持远程api及本地服务器**  
   **Supports remote APIs and local servers**  
+  **使用流式翻译提高了响应速度**
+  **Uses streaming translation to improve response speed**
 - **使用了完全独立于AutoTranslator的批处理机制实现了高效的翻译功能**  
   **Implements an efficient translation mechanism independent of AutoTranslator's batch processing**  
-- **实现了大量容错和兼容机制，完美支持各种尺寸的大模型**  
-  **Incorporates extensive fault tolerance and compatibility mechanisms, fully supporting large models of various sizes**  
+- **完美支持各种尺寸的大模型**  
+  **Fully supporting large models of various sizes**  
 - **实现了简单的上下文机制，让翻译尽可能的统一语境和术语**  
   **Introduces a simple context mechanism to unify translation context and terminology as much as possible**  
 - **支持自定义术语等功能，实现更个性化的翻译**  
@@ -95,7 +97,7 @@ GameName=DeathMustDie
 GameDesc=一个刷装备打怪的游戏、暗黑破坏神的风格和元素  
 ModelParams={"temperature":0.1}
 HalfWidth=True  
-MaxWordCount=200  
+MaxWordCount=500  
 ParallelCount=3  
 Interval=200  
 Debug=False  
@@ -106,6 +108,7 @@ MaxRetry=10
 
 ```
 [AutoLLM]
+APIKey= <KEY>  
 Model=qwen3:4b
 URL=http://localhost:11434/v1  
 ```

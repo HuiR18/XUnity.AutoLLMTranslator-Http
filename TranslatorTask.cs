@@ -4,6 +4,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using XUnity.AutoTranslator.Plugin.Core.Endpoints;
 using System.Text;
+using System.Runtime.InteropServices;
 
 public class TranslatorTask
 {
@@ -88,7 +89,7 @@ public class TranslatorTask
         _terminology = context.GetOrCreateSetting("AutoLLM", "Terminology", "");
         _gameName = context.GetOrCreateSetting("AutoLLM", "GameName", "A Game");
         _gameDesc = context.GetOrCreateSetting("AutoLLM", "GameDesc", "");
-        _maxWordCount = context.GetOrCreateSetting("AutoLLM", "MaxWordCount", 200);
+        _maxWordCount = context.GetOrCreateSetting("AutoLLM", "MaxWordCount", 500);
         _parallelCount = context.GetOrCreateSetting("AutoLLM", "ParallelCount", 3);
         _pollingInterval = context.GetOrCreateSetting("AutoLLM", "Interval", 200);
         _halfWidth = context.GetOrCreateSetting("AutoLLM", "HalfWidth", true);
@@ -243,13 +244,12 @@ public class TranslatorTask
         return task;
     }
 
-
-
     private string EscapeSpecialCharacters(string text)
     {
         //将换行进行转义
         text = text.Replace("\n", "\\n");
         text = text.Replace("\r", "\\r");
+        text = text.Replace("\"", "<quote>");
         return text;
     }
 
@@ -258,6 +258,7 @@ public class TranslatorTask
         //将换行进行转义
         text = text.Replace("\\n", "\n");
         text = text.Replace("\\r", "\r");
+        text = text.Replace("<quote>", "\"");
         return text;
     }
 
@@ -269,15 +270,17 @@ public class TranslatorTask
         int hashkey = tasks.GetHashCode();
         try
         {
-            Log($"翻译开始Batch:" + hashkey);
+            //Log($"翻译开始Batch:" + hashkey);
+            foreach (var task in tasks)
+            {
+               Log($"{hashkey} 翻译开始:{task.texts[0]}");
+            }
             List<string> texts = new List<string>();
             foreach (var task in tasks)
             {
                 texts.AddRange(task.texts);
             }
             var system = Config.prompt_base
-            .Replace("{{KIND_NOTES}}", Config.prompt_batch_note)
-            .Replace("{{KIND_EXAMPLE}}", Config.prompt_batch_example)
             .Replace("{{GAMENAME}}", _gameName)
             .Replace("{{GAMEDESC}}", _gameDesc)
             .Replace("{{OTHER}}", _requirement)
@@ -285,28 +288,23 @@ public class TranslatorTask
             .Replace("{{TARGET_LAN}}", DestinationLanguage)
             .Replace("{{SOURCE_LAN}}", SourceLanguage)
             .Replace("{{RECENT}}", string.Join("\n", recentTranslate));
-            var otxt = "{\"texts\":\n[\n";
-            int index = 0;
+            var otxt = "";
+            int index = 1;
             foreach (var data in texts)
             {
                 var t = EscapeSpecialCharacters(data);
-                otxt += $"\"{t}\"";
-                if (index < texts.Count - 1)
-                {
-                    otxt += ",\n";
-                }
-                else
-                {
-                    otxt += "\n";
-                }
+                otxt += $"[{index}]=\"{t}\"\n";
                 index++;
             }
-            otxt += "]\n}";
-
+           // otxt += "]";
+            if (system.Contains("/no_think") || system.Contains("/nothink"))
+            {
+                otxt = otxt + "\n/no_think";
+            }
             var messages = new List<object>
             {
                 new { role = "system", content = system },
-                new { role = "user", content = otxt }
+                new { role = "user", content = otxt}
             };
 
             var requestBody = new Dictionary<string, object>
@@ -339,52 +337,136 @@ public class TranslatorTask
                 }
             }
 
-
-            var requestData = JsonConvert.SerializeObject(requestBody);
-            //Log($"翻译请求: {requestData}");
-            //Log($"翻译请求");
-            using (WebClient client = new WebClient())
+            using (var client = new WebClient())
             {
                 client.Headers[HttpRequestHeader.Authorization] = $"Bearer {_apiKey}";
                 client.Headers[HttpRequestHeader.ContentType] = "application/json";
-                string response = await client.UploadStringTaskAsync(_url, "POST", requestData);
-                //Log($"翻译结果: {response}");
-                var ttxts = GetTranslatedText(response);
-                if ((ttxts?.Length ?? 0) != texts.Count)
+
+                // 创建HTTP请求
+                var request = (HttpWebRequest)WebRequest.Create(_url);
+                request.Method = "POST";
+                request.Headers.Add("Authorization", $"Bearer {_apiKey}");
+                request.ContentType = "application/json";
+
+                // 写入请求体
+                requestBody.Add("stream", true);
+                var requestJson = JsonConvert.SerializeObject(requestBody);
+                //Log($"请求: {requestJson}");
+                using (var streamWriter = new StreamWriter(request.GetRequestStream()))
                 {
-                    Log($"翻译结果数量不匹配: {ttxts?.Length} != {texts.Count}");
-                    throw new Exception($"翻译结果数量不匹配: {ttxts?.Length} != {texts.Count}");
+                    await streamWriter.WriteAsync(requestJson);
                 }
-                else
+
+                // 获取响应
+                using (var response = (HttpWebResponse)await request.GetResponseAsync())
+                using (var stream = response.GetResponseStream())
+                using (var reader = new StreamReader(stream))
                 {
-                    Log($"翻译成功: {ttxts?.Length} == {texts.Count}");
-                    int offset = 0;
-                    foreach (var task in tasks)
+                    var lineResponse = "";
+                    var fullResponse = "";
+                    string? line;
+                    var i = 0;                    
+                    while ((line = await reader.ReadLineAsync()) != null)
                     {
-                        task.result = ttxts.Skip(offset).Take(task.texts.Length).ToArray();
-                        offset += task.texts.Length;
-                        for (var i = 0; i < task.texts.Length; i++)
+                        if (string.IsNullOrEmpty(line)) continue;
+                        if (!line.StartsWith("data: ")) continue;
+
+                        var data = line.Substring(6);
+                        if (data == "[DONE]") break;
+
+                        try
                         {
-                            task.result[i] = translateDB.FindTerminology(task.texts[i]) ?? task.result[i];
-                        }
-                        task.state = TaskData.TaskState.Completed;
-                        for (var i = 0; i < task.texts.Length; i++)
-                        {
-                            lock (recentTranslate)
+                            var json = JObject.Parse(data);
+                            var content = json["choices"]?[0]?["delta"]?["content"]?.ToString();
+                            if (!string.IsNullOrEmpty(content))
                             {
-                                if (recentTranslate.Count > 10)
-                                    recentTranslate.RemoveAt(0);
-                                recentTranslate.Add($"{task.texts[i]} === {task.result[i]}");
+                                lineResponse += content;
+                                //Log($"流: {content} ::: {lineResponse}");
+                                fullResponse += content;
+                                if (lineResponse.Contains("</think>"))
+                                    lineResponse = Regex.Replace(lineResponse, "<think>.*?</think>", "", RegexOptions.Singleline);
+                                if (lineResponse.Contains("</context_think>"))
+                                    lineResponse = Regex.Replace(lineResponse, "<context_think>.*?</context_think>", "", RegexOptions.Singleline);
+                                if (string.IsNullOrEmpty(lineResponse))
+                                    continue;                                
+                                Log($"{hashkey} 流0: {lineResponse}");
+                                var lineResponseTxts = lineResponse.Split('\n');
+                                int point = 0;
+                                foreach (var txt in lineResponseTxts)
+                                {
+                                    point += txt.Length;
+                                    var rs = txt.Trim();
+                                    Log($"{hashkey} 流1: {rs}");
+                                    if (rs.Count(c => c == '\"') < 2)
+                                    {
+                                        continue;
+                                    }
+                                    //Log($"{hashkey} 流0_2: {rs}");
+                                    if (rs.EndsWith("\"")
+                                       // || rs.EndsWith("\",")
+                                       // || rs.EndsWith("\"]")
+                                       // || rs.EndsWith("\",]")
+                                        )
+                                    {                                        
+                                        Log($"{hashkey} 流2: {rs}");
+                                        //找到[NUM]="TEXT"中间的NUM和TEXT
+                                        var match = Regex.Match(rs, @"\[(\d+)\]=""(.*?)""");
+                                        if (!match.Success)
+                                        {
+                                            throw new Exception($"翻译结果错误 1: {fullResponse}");
+                                        }
+                                        var num =-1;
+                                        int.TryParse(match.Groups[1].Value, out num);
+                                        if (num < 1 || num > tasks.Count)
+                                        {
+                                            throw new Exception($"翻译结果错误 2: {fullResponse}");
+                                        }
+                                        rs = match.Groups[2].Value;   
+                                        if (string.IsNullOrEmpty(rs))
+                                        {
+                                            throw new Exception($"翻译结果错误 3: {fullResponse}");
+                                        }
+                                        if (_halfWidth)
+                                        {
+                                            //将全角符号转换为半角符号
+                                            rs = Regex.Replace(rs, @"[！＂＃＄％＆＇（）＊＋，－．／０１２３４５６７８９：；＜＝＞？＠［＼］＾＿｀｛｜｝～]", m => ((char)(m.Value[0] - 0xFEE0)).ToString());
+                                        }
+                                        rs = UnEscapeSpecialCharacters(rs);
+                                        //Log($"流2: {lineResponse}");
+                                        var task = tasks[num - 1];
+                                        task.result = new string[] { translateDB.FindTerminology(task.texts[0]) ?? rs };
+                                        task.state = TaskData.TaskState.Completed;
+                                        Log($"{hashkey} 流OK: {rs}");
+                                        lock (recentTranslate)
+                                        {
+                                            if (recentTranslate.Count > 10)
+                                                recentTranslate.RemoveAt(0);
+                                            recentTranslate.Add($"{task.texts[0]} === {task.result[0]}");
+                                        }
+                                        if (translateDB.AddData(task.texts[0], task.result[0]))
+                                            translateDB.SortData();
+                                        i++;
+                                        lineResponse = lineResponse.Substring(point + 1);
+                                        point = 0;
+                                        Log($"{hashkey} 流截取后: {lineResponse}");
+                                    }
+                                }
                             }
-                            translateDB.AddData(task.texts[i], task.result[i]);
+                        }
+                        catch (JsonReaderException ex)
+                        {
+                            Log($"解析流响应出错: {ex.Message}");
                         }
                     }
 
-                    translateDB.SortData();
-
+                    Log($"full流: {fullResponse}");
                 }
             }
 
+        }
+        catch (Exception ex)
+        {
+            Log($"Batch翻译失败: {ex.Message}");
         }
         finally
         {
@@ -397,249 +479,19 @@ public class TranslatorTask
                     task.retryCount++;
                     if (task.retryCount < _maxRetry)
                     {
-                        Log($"重新翻译:" + task.GetHashCode());
+                        Log($"重新翻译:" + task.texts[0]);
                         task.state = TaskData.TaskState.Waiting;
                         task.result = null;
                     }
                     else
                     {
-                        Log($"重试翻译依然失败，没救了:" + task.GetHashCode());
+                        Log($"重试翻译依然失败，没救了:" + task.texts[0]);
                         task.state = TaskData.TaskState.Failed;
                     }
                 }
             }
             lock (_lockObject)
                 curProcessingCount--;
-        }
-    }
-    async Task ProcessTaskSingle(TaskData task)
-    {
-        int hashkey = task.GetHashCode();
-        try
-        {
-            Log($"翻译开始Single:" + task.texts[0]);
-            var system = Config.prompt_base
-            .Replace("{{KIND_NOTES}}", Config.prompt_single_note)
-            .Replace("{{KIND_EXAMPLE}}", Config.prompt_single_example)
-            .Replace("{{GAMENAME}}", _gameName)
-            .Replace("{{GAMEDESC}}", _gameDesc)
-            .Replace("{{OTHER}}", _requirement)
-            .Replace("{{HISTORY}}", string.Join("\n", translateDB.Search(task.texts.ToList(), 1000)))
-            .Replace("{{TARGET_LAN}}", DestinationLanguage)
-            .Replace("{{SOURCE_LAN}}", SourceLanguage)
-            .Replace("{{RECENT}}", string.Join("\n", recentTranslate));
-            var otxt = $"\"{EscapeSpecialCharacters(task.texts[0])}\"";
-            var messages = new List<object>
-            {
-                new { role = "system", content = system },
-                new { role = "user", content = otxt }
-            };
-
-            var requestBody = new
-            {
-                model = _model,
-                temperature = 0.1,
-                max_tokens = 4000,
-                top_p = 1,
-                frequency_penalty = 0,
-                presence_penalty = 0,
-                messages
-            };
-
-            var requestData = JsonConvert.SerializeObject(requestBody);
-            //Log($"翻译请求");
-            using (WebClient client = new WebClient())
-            {
-                client.Headers[HttpRequestHeader.Authorization] = $"Bearer {_apiKey}";
-                client.Headers[HttpRequestHeader.ContentType] = "application/json";
-                string response = await client.UploadStringTaskAsync(_url, "POST", requestData);
-                JObject jsonResponse = JObject.Parse(response);
-                var rawString = jsonResponse["choices"]?[0]?["message"]?["content"]?.ToString() ?? string.Empty;
-                rawString = Regex.Replace(rawString, "<think>.*?</think>", "", RegexOptions.Singleline);
-                rawString = rawString.Trim();
-                if (_halfWidth)
-                {
-                    //将全角符号转换为半角符号
-                    rawString = Regex.Replace(rawString, @"[！＂＃＄％＆＇（）＊＋，－．／０１２３４５６７８９：；＜＝＞？＠［＼］＾＿｀｛｜｝～]", m => ((char)(m.Value[0] - 0xFEE0)).ToString());
-                }
-                else
-                {
-                    if (rawString.StartsWith("“"))
-                    {
-                        rawString = rawString.Substring(1);
-                    }
-                    if (rawString.EndsWith("”"))
-                    {
-                        rawString = rawString.Substring(0, rawString.Length - 1);
-                    }
-                }
-                if (rawString.StartsWith("\""))
-                {
-                    rawString = rawString.Substring(1);
-                }
-                if (rawString.EndsWith("\""))
-                {
-                    rawString = rawString.Substring(0, rawString.Length - 1);
-                }
-
-                rawString = UnEscapeSpecialCharacters(rawString);
-                if (string.IsNullOrEmpty(rawString))
-                {
-                    Log($"翻译结果错误：{task.texts[0]}");
-                    throw new Exception($"翻译结果错误");
-                }
-                else
-                {
-
-                    task.result = [translateDB.FindTerminology(task.texts[0]) ?? rawString];
-                    task.state = TaskData.TaskState.Completed;
-                    lock (recentTranslate)
-                    {
-                        if (recentTranslate.Count > 10)
-                            recentTranslate.RemoveAt(0);
-                        recentTranslate.Add($"{task.texts[0]} === {task.result[0]}");
-                    }
-                    translateDB.AddData(task.texts[0], task.result[0]);
-                    translateDB.SortData();
-
-                }
-            }
-
-        }
-        finally
-        {
-            Log($"翻译结束:" + hashkey);
-            //失败了重新翻译
-            if (task.state != TaskData.TaskState.Completed)
-            {
-                task.retryCount++;
-                if (task.retryCount < _maxRetry)
-                {
-                    Log($"重新翻译:" + task.GetHashCode());
-                    task.state = TaskData.TaskState.Waiting;
-                    task.result = null;
-                }
-                else
-                {
-                    Log($"重试翻译依然失败，没救了:" + task.GetHashCode());
-                    task.state = TaskData.TaskState.Failed;
-                }
-            }
-            lock (_lockObject)
-                curProcessingCount--;
-        }
-    }
-
-    string FixJson(string rawString)
-    {
-        rawString = Regex.Replace(rawString, "<think>.*?</think>", "", RegexOptions.Singleline);
-        if (rawString.StartsWith("```json"))
-        {
-            rawString = rawString.Substring(7);
-        }
-        if (rawString.EndsWith("```"))
-        {
-            rawString = rawString.Substring(0, rawString.Length - 3);
-        }
-        // 处理可能的 JSON 格式问题
-        if (rawString.LastIndexOf(']') > rawString.LastIndexOf("}"))
-        {
-            //Log($"添加}} {rawString.LastIndexOf(']')}");
-            rawString = rawString.Insert(rawString.LastIndexOf(']') + 1, "}");
-        }
-        //提取json数据：{XXX}
-        var match = Regex.Match(rawString, @"\{[\s\S]*\}");
-        rawString = match.Success ? match.Value : rawString;
-        return rawString;
-    }
-
-    string FixJsonSingleLLM(string json)
-    {
-        try
-        {
-            var messages = new List<object>
-        {
-            new { role = "system", content = Config.jsonfix_prompt },
-            new { role = "user", content = json }
-        };
-
-            var requestBody = new
-            {
-                model = _model,
-                temperature = 0.1,
-                max_tokens = 4000,
-                top_p = 1,
-                frequency_penalty = 0,
-                presence_penalty = 0,
-                messages
-            };
-
-            var requestData = JsonConvert.SerializeObject(requestBody);
-            using (WebClient client = new WebClient())
-            {
-                client.Headers[HttpRequestHeader.Authorization] = $"Bearer {_apiKey}";
-                client.Headers[HttpRequestHeader.ContentType] = "application/json";
-                string response = client.UploadString(_url, "POST", requestData);
-                JObject jsonResponse = JObject.Parse(response);
-                var rawString = jsonResponse["choices"]?[0]?["message"]?["content"]?.ToString() ?? string.Empty;
-                Log($"修复JSON结果: {rawString}");
-                rawString = FixJson(rawString);
-                if (!string.IsNullOrEmpty(rawString))
-                {
-                    return rawString;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Log($"修复JSON时发生错误: {ex}");
-            return json;
-        }
-        return json;
-    }
-
-    private string[] GetTranslatedText(string Response)
-    {
-
-        try
-        {
-            JObject jsonResponse = JObject.Parse(Response);
-            var rawString = jsonResponse["choices"]?[0]?["message"]?["content"]?.ToString() ?? string.Empty;
-            if (string.IsNullOrEmpty(rawString))
-            {
-                Log("翻译结果为空");
-                return new string[0];
-            }
-
-            //删除<think></think>标签以及内部的内容
-            rawString = FixJson(rawString);
-            //Log($"翻译结果: {rawString}");
-
-            JObject jsondata;
-            try
-            {
-                if (_halfWidth)
-                {
-                    //将全角符号转换为半角符号
-                    rawString = Regex.Replace(rawString, @"[！＂＃＄％＆＇（）＊＋，－．／０１２３４５６７８９：；＜＝＞？＠［＼］＾＿｀｛｜｝～]", m => ((char)(m.Value[0] - 0xFEE0)).ToString());
-                }
-                //Log($"翻译数据: {rawString} ||| {frawString}");
-                jsondata = JObject.Parse(rawString);
-            }
-            catch (JsonReaderException ex)
-            {
-                Log($"JSON 解析错误: {ex.Message}, 原始内容: {rawString}");
-                return new string[0];
-            }
-
-            var rss = jsondata["texts"]?.Select(t => UnEscapeSpecialCharacters(t.ToString())).ToArray() ?? new string[0];
-            Log($"翻译结果Count: {rss.Length}");
-            return rss;
-        }
-        catch (Exception ex)
-        {
-            Log($"获取翻译文本时发生错误: {ex}");
-            return new string[0];
         }
     }
 
@@ -681,10 +533,7 @@ public class TranslatorTask
                 {
                     foreach (var tasklist in taskDatass)
                     {
-                        if (tasklist.Count == 1 && tasklist[0].retryCount > 2)
-                            _ = ProcessTaskSingle(tasklist[0]);
-                        else
-                            _ = ProcessTaskBatch(tasklist);
+                        _ = ProcessTaskBatch(tasklist);
                     }
                 }
                 // Log("Polling End");

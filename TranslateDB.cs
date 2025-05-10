@@ -44,19 +44,20 @@ public class TranslateDB
     return text;
   }
 
-  public void AddData(string key, string value)
+  public bool AddData(string key, string value)
   {
     if (key.Length > 100)
-      return;
+      return false;
     var hashkey = key.GetHashCode();
     if (existskeys.Contains(hashkey))
-      return;
+      return false;
     lock (translateDatas)
     {
       //Log($"添加翻译: {parts[0]} = {parts[1]}");
       translateDatas.Add(new string[] { key, value });
       existskeys.Add(hashkey);
     }
+    return true;
   }
 
   void InitDB(IInitializationContext context, string _terminology)
