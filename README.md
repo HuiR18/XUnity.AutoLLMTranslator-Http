@@ -12,7 +12,7 @@ This plugin offers high-performance and customizable translation features.
 ## Features
 - **支持远程api及本地服务器**  
   **Supports remote APIs and local servers**  
-  **使用流式翻译提高了响应速度**
+- **使用流式翻译提高了响应速度**
   **Uses streaming translation to improve response speed**
 - **使用了完全独立于AutoTranslator的批处理机制实现了高效的翻译功能**  
   **Implements an efficient translation mechanism independent of AutoTranslator's batch processing**  
