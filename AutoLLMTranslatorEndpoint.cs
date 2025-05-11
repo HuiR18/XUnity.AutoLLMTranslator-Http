@@ -42,7 +42,7 @@ internal class LLMTranslatorEndpoint : WwwEndpoint
         {
             texts = context.UntranslatedTexts
         };
-        context.Complete(new WwwRequestInfo("http://localhost:20000", JsonConvert.SerializeObject(requestBody)));
+        context.Complete(new WwwRequestInfo("http://127.0.0.1:20000/", JsonConvert.SerializeObject(requestBody)));
     }
 
     public override void OnExtractTranslation(IWwwTranslationExtractionContext context)

@@ -95,6 +95,10 @@ public class TranslatorTask
         _halfWidth = context.GetOrCreateSetting("AutoLLM", "HalfWidth", true);
         _maxRetry = context.GetOrCreateSetting("AutoLLM", "MaxRetry", 10);
         _modelParams = context.GetOrCreateSetting("AutoLLM", "ModelParams", "");
+        if (context.GetOrCreateSetting("AutoLLM", "DisableSpamChecks", false))
+        {
+            context.DisableSpamChecks();
+        }
 
         if (_url.EndsWith("/v1"))
         {
@@ -114,10 +118,11 @@ public class TranslatorTask
         translateDB.Init(context, _terminology);
 
         listener = new HttpListener();
-        listener.Prefixes.Add("http://+:20000/");
+        listener.Prefixes.Add("http://127.0.0.1:20000/");
         // 启动监听
         listener.Start();
-        Log("Listening for requests on http://localhost:20000/");
+        Log("Listening for requests on http://127.0.0.1:20000/");
+
 
         // Start a separate thread for HTTP listener
         Task.Run(async () =>
@@ -171,7 +176,7 @@ public class TranslatorTask
             if (request.HttpMethod == "GET")
             {
                 // 处理 GET 请求
-                string responseString = "AutoLLM Translator is running.";
+                string responseString = "AutoLLMTranslator is running.";
                 byte[] buffer = Encoding.UTF8.GetBytes(responseString);
                 response.ContentLength64 = buffer.Length;
                 response.OutputStream.Write(buffer, 0, buffer.Length);
@@ -273,7 +278,7 @@ public class TranslatorTask
             //Log($"翻译开始Batch:" + hashkey);
             foreach (var task in tasks)
             {
-               Log($"{hashkey} 翻译开始:{task.texts[0]}");
+                Log($"{hashkey} 翻译开始:{task.texts[0]}");
             }
             List<string> texts = new List<string>();
             foreach (var task in tasks)
@@ -296,7 +301,7 @@ public class TranslatorTask
                 otxt += $"[{index}]=\"{t}\"\n";
                 index++;
             }
-           // otxt += "]";
+            // otxt += "]";
             if (system.Contains("/no_think") || system.Contains("/nothink"))
             {
                 otxt = otxt + "\n/no_think";
@@ -365,7 +370,7 @@ public class TranslatorTask
                     var lineResponse = "";
                     var fullResponse = "";
                     string? line;
-                    var i = 0;                    
+                    var i = 0;
                     while ((line = await reader.ReadLineAsync()) != null)
                     {
                         if (string.IsNullOrEmpty(line)) continue;
@@ -388,7 +393,7 @@ public class TranslatorTask
                                 if (lineResponse.Contains("</context_think>"))
                                     lineResponse = Regex.Replace(lineResponse, "<context_think>.*?</context_think>", "", RegexOptions.Singleline);
                                 if (string.IsNullOrEmpty(lineResponse))
-                                    continue;                                
+                                    continue;
                                 Log($"{hashkey} 流0: {lineResponse}");
                                 var lineResponseTxts = lineResponse.Split('\n');
                                 int point = 0;
@@ -403,11 +408,11 @@ public class TranslatorTask
                                     }
                                     //Log($"{hashkey} 流0_2: {rs}");
                                     if (rs.EndsWith("\"")
-                                       // || rs.EndsWith("\",")
-                                       // || rs.EndsWith("\"]")
-                                       // || rs.EndsWith("\",]")
+                                        // || rs.EndsWith("\",")
+                                        // || rs.EndsWith("\"]")
+                                        // || rs.EndsWith("\",]")
                                         )
-                                    {                                        
+                                    {
                                         Log($"{hashkey} 流2: {rs}");
                                         //找到[NUM]="TEXT"中间的NUM和TEXT
                                         var match = Regex.Match(rs, @"\[(\d+)\]=""(.*?)""");
@@ -415,13 +420,13 @@ public class TranslatorTask
                                         {
                                             throw new Exception($"翻译结果错误 1: {fullResponse}");
                                         }
-                                        var num =-1;
+                                        var num = -1;
                                         int.TryParse(match.Groups[1].Value, out num);
                                         if (num < 1 || num > tasks.Count)
                                         {
                                             throw new Exception($"翻译结果错误 2: {fullResponse}");
                                         }
-                                        rs = match.Groups[2].Value;   
+                                        rs = match.Groups[2].Value;
                                         if (string.IsNullOrEmpty(rs))
                                         {
                                             throw new Exception($"翻译结果错误 3: {fullResponse}");

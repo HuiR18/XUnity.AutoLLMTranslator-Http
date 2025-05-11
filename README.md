@@ -61,6 +61,7 @@ Additionally, add the following configurations:
 - `Interval`：轮询间隔（毫秒）,每次翻译的间隔，在间隔中系统会尽可能的合并翻译内容，以便提高翻译速度减少并发，但太长会导致响应不够及时。   Polling interval (in milliseconds). During this interval, the system will try to merge translation content to improve speed and reduce concurrency. However, too long an interval may lead to delayed responses.  
 - `HalfWidth`：是否将全角字符转换为半角，在字体无法显示全角符号的时候使用这个。  Whether to convert full-width characters to half-width. Use this when fonts cannot display full-width symbols.  
 - `MaxRetry`：失败翻译的最大重试次数，一般不动，如果大模型失败率太高，可以尝试提高。  Maximum retry attempts for failed translations. Generally, this should not be changed, but if the large model has a high failure rate, you can try increasing it.  
+- `DisableSpamChecks`: 禁用垃圾检查，默认关闭。  Disable spam checks, False by default.
 - `Debug`：启用或禁用调试日志(AutoLLM.log)。  Enable or disable debug logs(AutoLLM.log).  
 
 ** *为必填参数 **  
@@ -156,8 +157,8 @@ If the local device is poor, it is still recommended to use network services, su
        Verify that your AutoTranslator is functioning correctly. Currently, AutoTranslator does not support plugin operation for IL2CPP games.   
     1. 请检查你的LLM服务配置是否正确且生效。  
        Please check if your LLM service configuration is correct and effective.  
-    2. 确保20000端口没有被占用，可以在游戏运行的情况下使用浏览器访问 http://localhost:20000 确认。  
-       Ensure that port 20000 is not occupied. You can confirm this by accessing http://localhost:20000 in a browser while the game is running.  
+    2. 确保20000端口没有被占用，可以在游戏运行的情况下使用浏览器访问 http://127.0.0.1:20000 确认。  
+       Ensure that port 20000 is not occupied. You can confirm this by accessing http://127.0.0.1:20000 in a browser while the game is running.  
     3. 是否使用了足够强大的模型。  
        Check if a sufficiently powerful model is being used.  
     4. 缺少Newtonsoft.Json.dll或者Newtonsoft.Json.dll不兼容。
