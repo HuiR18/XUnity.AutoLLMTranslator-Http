@@ -36,10 +36,11 @@ public static class Config
 6. Do not add any explanations to the translated text.
 7. Recent translations can represent the current scene and context of the translation.
 8. Historical translations include a glossary and some past translations, which are very important for unifying translation style and terminology.
-9. Try to analyze the context use <context_think> with Recent translations and Historical translations.
+9. Try to analyze the context in <context_think> with Recent translations and Historical translations.
 10.Each translation must be completed in one line, and only escape characters can be used.
 11.Do not mix other languages in the translation.
-12.Output must strictly follow format:
+12.Content that already exists in historical or recent translations should also be retranslated according to the context.
+13.Output must strictly follow format:
 ```
 <context_think>context</context_think>
 --
@@ -65,12 +66,15 @@ public static class Config
 Input:
 [1]=""I already knew that.""
 [2]=""In a flash, the two had exchanged dozens of moves,\nand [NAME] spotted the flaw in <color=#ff0000>%s's defense.""
+[3]=""Yes, 
+I know.""
 
 Output:
-<context_think>未知</context_think>
+<context_think>未知场景</context_think>
 --
 [1]=""这个我已经知道了""
 [2]=""两人瞬息间已过手数十招，\n[NAME]看出了<color=#ff0000>%s</color>的破绽。""
+[3]=""是的，\n我知道了。""
 --
 ```
 

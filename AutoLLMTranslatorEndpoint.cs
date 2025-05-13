@@ -17,27 +17,26 @@ internal class LLMTranslatorEndpoint : WwwEndpoint
     public override string FriendlyName => "AutoLLM Translate";
     TranslatorTask task = new TranslatorTask();
 
-    void Log(string txt)
-    {
-        Logger.Log(txt);
-    }
-
     public override void Initialize(IInitializationContext context)
     {
-        if (!context.GetOrCreateSetting("AutoLLM", "Debug", false))
+        try
         {
-            Logger.CloseLogger();
+            var debuglvl = context.GetOrCreateSetting<Logger.LogLevel>("AutoLLM", "LogLevel", Logger.LogLevel.Error);
+            var log2file = context.GetOrCreateSetting<bool>("AutoLLM", "Log2File", false);
+            Logger.InitLogger(debuglvl, log2file);
         }
-
-        // Remove artificial delays
+        catch (Exception ex)
+        {            
+            Logger.InitLogger(Logger.LogLevel.Error, false);
+            Logger.Error($"{ex}");
+        }
         context.SetTranslationDelay(0.1f);
-        context.DisableSpamChecks();
         task.Init(context);
     }
 
     public override void OnCreateRequest(IWwwRequestCreationContext context)
     {
-        Log($"翻译请求: {context.GetHashCode()}");
+        Logger.Debug($"翻译请求: {context.GetHashCode()}");
         var requestBody = new
         {
             texts = context.UntranslatedTexts
@@ -51,10 +50,10 @@ internal class LLMTranslatorEndpoint : WwwEndpoint
 
         JObject jsonResponse;
         jsonResponse = JObject.Parse(data);
-        Log($"翻译结果: {jsonResponse}");
+        Logger.Debug($"翻译结果: {jsonResponse}");
         var rs = jsonResponse["texts"]?.ToObject<string[]>() ?? null;
         if ((rs?.Length ?? 0) == 0)
-        {            
+        {
             context.Fail("翻译结果为空");
         }
         else

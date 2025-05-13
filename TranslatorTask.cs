@@ -75,11 +75,6 @@ public class TranslatorTask
     //最近翻译
     List<string> recentTranslate = new List<string>();
 
-    void Log(string txt)
-    {
-        Logger.Log(txt);
-    }
-
     public void Init(IInitializationContext context)
     {
         _apiKey = context.GetOrCreateSetting("AutoLLM", "APIKey", "");
@@ -121,7 +116,7 @@ public class TranslatorTask
         listener.Prefixes.Add("http://127.0.0.1:20000/");
         // 启动监听
         listener.Start();
-        Log("Listening for requests on http://127.0.0.1:20000/");
+        Logger.Info("Listening for requests on http://127.0.0.1:20000/");
 
 
         // Start a separate thread for HTTP listener
@@ -139,7 +134,7 @@ public class TranslatorTask
             }
             catch (Exception ex)
             {
-                Log($"HTTP listener error: {ex.Message}");
+                Logger.Error($"HTTP listener error: {ex.Message}");
             }
         });
         Task.Run(() => Polling());
@@ -184,7 +179,7 @@ public class TranslatorTask
         }
         catch (Exception ex)
         {
-            Log($"处理请求时发生错误: {ex.Message}");
+            Logger.Error($"处理请求时发生错误: {ex.Message}");
         }
         finally
         {
@@ -278,7 +273,7 @@ public class TranslatorTask
             //Log($"翻译开始Batch:" + hashkey);
             foreach (var task in tasks)
             {
-                Log($"{hashkey} 翻译开始:{task.texts[0]}");
+                Logger.Debug($"{hashkey} 翻译开始:{task.texts[0]}");
             }
             List<string> texts = new List<string>();
             foreach (var task in tasks)
@@ -338,7 +333,7 @@ public class TranslatorTask
                 }
                 catch (JsonReaderException ex)
                 {
-                    Log($"模型参数解析错误: {ex.Message}");
+                    Logger.Error($"模型参数解析错误: {ex.Message}");
                 }
             }
 
@@ -394,14 +389,14 @@ public class TranslatorTask
                                     lineResponse = Regex.Replace(lineResponse, "<context_think>.*?</context_think>", "", RegexOptions.Singleline);
                                 if (string.IsNullOrEmpty(lineResponse))
                                     continue;
-                                Log($"{hashkey} 流0: {lineResponse}");
+                                Logger.Debug($"{hashkey} 流0: |{lineResponse}|");
                                 var lineResponseTxts = lineResponse.Split('\n');
                                 int point = 0;
                                 foreach (var txt in lineResponseTxts)
                                 {
-                                    point += txt.Length;
-                                    var rs = txt.Trim();
-                                    Log($"{hashkey} 流1: {rs}");
+                                    Logger.Debug($"{hashkey} 流1: |{txt}| len: {txt.Length}");
+                                    point += Math.Max(1, txt.Length);
+                                    var rs = txt.Trim();                                    
                                     if (rs.Count(c => c == '\"') < 2)
                                     {
                                         continue;
@@ -413,7 +408,7 @@ public class TranslatorTask
                                         // || rs.EndsWith("\",]")
                                         )
                                     {
-                                        Log($"{hashkey} 流2: {rs}");
+                                        Logger.Debug($"{hashkey} 流2: {rs}");
                                         //找到[NUM]="TEXT"中间的NUM和TEXT
                                         var match = Regex.Match(rs, @"\[(\d+)\]=""(.*?)""");
                                         if (!match.Success)
@@ -441,7 +436,7 @@ public class TranslatorTask
                                         var task = tasks[num - 1];
                                         task.result = new string[] { translateDB.FindTerminology(task.texts[0]) ?? rs };
                                         task.state = TaskData.TaskState.Completed;
-                                        Log($"{hashkey} 流OK: {rs}");
+                                        Logger.Debug($"{hashkey} 流OK: {rs}");
                                         lock (recentTranslate)
                                         {
                                             if (recentTranslate.Count > 10)
@@ -451,31 +446,32 @@ public class TranslatorTask
                                         if (translateDB.AddData(task.texts[0], task.result[0]))
                                             translateDB.SortData();
                                         i++;
-                                        lineResponse = lineResponse.Substring(point + 1);
-                                        point = 0;
-                                        Log($"{hashkey} 流截取后: {lineResponse}");
+                                        var hlineResponse = lineResponse;
+                                        lineResponse = lineResponse.Substring(point);
+                                        Logger.Debug($"{hashkey} 流截取后: {lineResponse}|olen:{hlineResponse.Length} | point: {point}");
+                                        point = 0;                                       
                                     }
                                 }
                             }
                         }
                         catch (JsonReaderException ex)
                         {
-                            Log($"解析流响应出错: {ex.Message}");
+                            Logger.Error($"解析流响应出错: {ex.Message}");
                         }
                     }
 
-                    Log($"full流: {fullResponse}");
+                    Logger.Debug($"full流: {fullResponse}");
                 }
             }
 
         }
         catch (Exception ex)
         {
-            Log($"Batch翻译失败: {ex.Message}");
+            Logger.Error($"Batch翻译失败: {ex.Message}");
         }
         finally
         {
-            Log($"翻译结束:" + hashkey);
+            Logger.Debug($"翻译结束:" + hashkey);
             foreach (var task in tasks)
             {
                 //失败了重新翻译
@@ -484,13 +480,13 @@ public class TranslatorTask
                     task.retryCount++;
                     if (task.retryCount < _maxRetry)
                     {
-                        Log($"重新翻译:" + task.texts[0]);
+                        Logger.Debug($"重新翻译:" + task.texts[0]);
                         task.state = TaskData.TaskState.Waiting;
                         task.result = null;
                     }
                     else
                     {
-                        Log($"重试翻译依然失败，没救了:" + task.texts[0]);
+                        Logger.Error($"重试翻译依然失败，没救了:" + task.texts[0]);
                         task.state = TaskData.TaskState.Failed;
                     }
                 }
@@ -510,7 +506,7 @@ public class TranslatorTask
             {
                 await Task.Delay(_pollingInterval);
                 if (curProcessingCount > 0)
-                    Log($"Polling curProcessingCount: {curProcessingCount}/{_parallelCount} TASKS: {taskDatas.Count}");
+                    Logger.Debug($"Polling curProcessingCount: {curProcessingCount}/{_parallelCount} TASKS: {taskDatas.Count}");
                 if (curProcessingCount >= _parallelCount)
                 {
                     continue;
@@ -545,7 +541,7 @@ public class TranslatorTask
             }
             catch (Exception ex)
             {
-                Logger.Log(ex.Message);
+                Logger.Error(ex.Message);
             }
         }
     }

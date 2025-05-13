@@ -1,14 +1,26 @@
-﻿using XUnity.Common.Logging;
+﻿using System.Security.Cryptography.X509Certificates;
+using XUnity.Common.Logging;
 
 public static class Logger
 {
   static System.IO.StreamWriter _logger = null;
-  static bool _isDebug = true;
-
-  static void InitLogger()
+  public enum LogLevel
   {
-    if (!_isDebug) return;
-    if (_logger == null)
+    Null,
+    Info,
+    Error,
+    Warning,
+    Debug,
+  }
+  static LogLevel _logLevel = LogLevel.Error;
+  static bool _log2file = false;
+
+  public static void InitLogger(LogLevel logLevel = LogLevel.Error, bool log2file = false)
+  {
+    _logLevel = logLevel;
+    _log2file = log2file;
+    if (_logLevel == LogLevel.Null) return;
+    if (_log2file && _logger == null)
     {
       string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
       var logfile = appDirectory + $"\\AutoLLM.log";
@@ -17,18 +29,45 @@ public static class Logger
     }
   }
 
-  public static void CloseLogger()
+  static void Log(string message, LogLevel level)
   {
-    _isDebug = false;
+    if (level > _logLevel) return;
+    message = $"[{DateTime.Now:HH:mm:ss}] {message}";
+    var logMessage = $"[ALLM_{level.ToString()[0]}]: {message}";
+    if (level == LogLevel.Error)
+    {
+      XuaLogger.Common.Error(logMessage);
+    }
+    else if (level == LogLevel.Warning)
+    {
+      XuaLogger.Common.Warn(logMessage);
+    }
+    else if (level == LogLevel.Debug)
+    {
+      XuaLogger.Common.Debug(logMessage);
+    }
+    else
+    {
+      XuaLogger.Common.Info(logMessage);
+    }
+    _logger?.WriteLine(logMessage);
   }
 
-  public static void Log(string message)
+  public static void Info(string message)
   {
-    if (!_isDebug) return;
-    InitLogger();
-    message = $"[{DateTime.Now:HH:mm:ss}] {message}";
-    XuaLogger.AutoTranslator.Info($"[LLMT]: {message}");
-    _logger.WriteLine(message);
+    Log(message, LogLevel.Info);
+  }
+  public static void Debug(string message)
+  {
+    Log(message, LogLevel.Debug);
+  }
+  public static void Warn(string message)
+  {
+    Log(message, LogLevel.Warning);
+  }
+  public static void Error(string message)
+  {
+    Log(message, LogLevel.Error);
   }
 
 }

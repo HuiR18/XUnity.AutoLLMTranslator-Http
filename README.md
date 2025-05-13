@@ -44,29 +44,6 @@ Modify the following configuration in the `Config.ini` file:
     [Service]
     Endpoint=AutoLLMTranslate
 ```
-同时需要添加以下配置：  
-Additionally, add the following configurations:  
-- [AutoLLM]：配置头  Configuration header  
-- *`Model`：用于翻译的模型。  The model used for translation.  
-- *`URL`：LLM 服务器的 URL，一般以/v1结尾。也可以是/chat/completions的完整路径。  URL of the LLM server, usually ending with `/v1`. It can also be the full path to `/chat/completions`.  
-- `APIKey`：LLM 服务器的 API 密钥。如果使用本地模型，可以留空。 API key for the LLM server. If using a local model, this can be left blank.
-- `Requirement`：额外的翻译需求或指令，例如:使用莎士比亚的风格进行翻译。  Additional translation requirements or instructions, e.g., translating in Shakespearean style.   
-- `Terminology`：术语表，使用|隔开不同术语，使用==连接原文和翻译。例如：Lorien==罗林|Skadi==斯卡蒂  。Terminology list, with different terms separated by `|` and original text and translation connected by `==`,e.g.,Lorien==罗林|Skadi==斯卡蒂.    
-- `GameName`: 游戏名字  Name of the game  
-- `GameDesc`：游戏介绍，用于帮助AI进行更准确的翻译，可以对游戏的玩法/类型/风格进行描述。 Game description to help the AI perform more accurate translations. It can describe gameplay, type, or style.    
-- `ModelParams`: 模型参数定制，使用json格式书写，会直接传递给模型api。例如：{"temperature":0.1}  
-  Model parameter customization, written in JSON format, will be directly passed to the model API. For example: {"temperature":0.1}  
-- `MaxWordCount`：每批翻译的最大单词数，适当的单词可以减少并发数量从而提高翻译速度。  Maximum number of words per batch translation. Proper word count can reduce concurrency and improve translation speed. 
-- `ParallelCount`：并行翻译任务的最大数量，一般由LLM的提供商决定。  Maximum number of parallel translation tasks, usually determined by the LLM provider.  
-- `Interval`：轮询间隔（毫秒）,每次翻译的间隔，在间隔中系统会尽可能的合并翻译内容，以便提高翻译速度减少并发，但太长会导致响应不够及时。   Polling interval (in milliseconds). During this interval, the system will try to merge translation content to improve speed and reduce concurrency. However, too long an interval may lead to delayed responses.  
-- `HalfWidth`：是否将全角字符转换为半角，在字体无法显示全角符号的时候使用这个。  Whether to convert full-width characters to half-width. Use this when fonts cannot display full-width symbols.  
-- `MaxRetry`：失败翻译的最大重试次数，一般不动，如果大模型失败率太高，可以尝试提高。  Maximum retry attempts for failed translations. Generally, this should not be changed, but if the large model has a high failure rate, you can try increasing it.  
-- `DisableSpamChecks`: 禁用垃圾检查，默认关闭。  Disable spam checks, False by default.
-- `Debug`：启用或禁用调试日志(AutoLLM.log)。  Enable or disable debug logs(AutoLLM.log).  
-
-** *为必填参数 **  
-** *Required parameters **  
-
 此外，你需要正确的配置：  
 Additionally, you need to configure correctly:  
 ```
@@ -85,11 +62,21 @@ Language=zh_cn
 FromLanguage=en
 ```
 
+最小配置minimum configuration:
+
+```
+[AutoLLM]
+APIKey= <OPTION>  
+Model=qwen3:8b
+URL=http://localhost:11434/v1
+```
+
+
 完整配置complete configuration:
 
 ```
 [AutoLLM]
-APIKey= <KEY>  
+APIKey= <OPTION>  
 Model=qwen-turbo  
 URL=https://dashscope.aliyuncs.com/compatible-mode/v1  
 Requirement=/no_think  
@@ -101,18 +88,31 @@ HalfWidth=True
 MaxWordCount=500  
 ParallelCount=3  
 Interval=200  
-Debug=False  
 MaxRetry=10  
+LogLevel=Error
+Log2File=False
 ```
 
-最小配置minimum configuration:
+配置说明：  
+Configuration description:
+- `Model`：用于翻译的模型。  The model used for translation.  
+- `URL`：LLM 服务器的 URL，一般以/v1结尾。也可以是/chat/completions的完整路径。  URL of the LLM server, usually ending with `/v1`. It can also be the full path to `/chat/completions`.  
+- [OPTION]`APIKey`：LLM 服务器的 API 密钥。如果使用本地模型，可以留空。 API key for the LLM server. If using a local model, this can be left blank.
+- [OPTION]`Requirement`：额外的翻译需求或指令，例如:使用莎士比亚的风格进行翻译。  Additional translation requirements or instructions, e.g., translating in Shakespearean style.   
+- [OPTION]`Terminology`：术语表，使用|隔开不同术语，使用==连接原文和翻译。例如：Lorien==罗林|Skadi==斯卡蒂  。Terminology list, with different terms separated by `|` and original text and translation connected by `==`,e.g.,Lorien==罗林|Skadi==斯卡蒂.    
+- [OPTION]`GameName`: 游戏名字  Name of the game  
+- [OPTION]`GameDesc`：游戏介绍，用于帮助AI进行更准确的翻译，可以对游戏的玩法/类型/风格进行描述。 Game description to help the AI perform more accurate translations. It can describe gameplay, type, or style.    
+- [OPTION]`ModelParams`: 模型参数定制，使用json格式书写，会直接传递给模型api。例如：{"temperature":0.1}  
+  Model parameter customization, written in JSON format, will be directly passed to the model API. For example: {"temperature":0.1}  
+- [OPTION]`MaxWordCount`：每批翻译的最大单词数，适当的单词可以减少并发数量从而提高翻译速度。  Maximum number of words per batch translation. Proper word count can reduce concurrency and improve translation speed. 
+- [OPTION]`ParallelCount`：并行翻译任务的最大数量，一般由LLM的提供商决定。  Maximum number of parallel translation tasks, usually determined by the LLM provider.  
+- [OPTION]`Interval`：轮询间隔（毫秒）,每次翻译的间隔，在间隔中系统会尽可能的合并翻译内容，以便提高翻译速度减少并发，但太长会导致响应不够及时。   Polling interval (in milliseconds). During this interval, the system will try to merge translation content to improve speed and reduce concurrency. However, too long an interval may lead to delayed responses.  
+- [OPTION]`HalfWidth`：是否将全角字符转换为半角，在字体无法显示全角符号的时候使用这个。  Whether to convert full-width characters to half-width. Use this when fonts cannot display full-width symbols.  
+- [OPTION]`MaxRetry`：失败翻译的最大重试次数，一般不动，如果大模型失败率太高，可以尝试提高。  Maximum retry attempts for failed translations. Generally, this should not be changed, but if the large model has a high failure rate, you can try increasing it.  
+- [OPTION]`DisableSpamChecks`: 禁用垃圾检查，默认False。  Disable spam checks, False by default.
+- [OPTION]`LogLevel`：日志等级，Error/Warning/Info/Debug。  Log level: Error/Warning/Info/Debug.
+- [OPTION]`Log2File`：是否将日志写入文件。  Whether to write logs to a file.
 
-```
-[AutoLLM]
-APIKey= <KEY>  
-Model=qwen3:4b
-URL=http://localhost:11434/v1  
-```
 
 ## 本地 LLM 服务器  
 ## Local LLM Server  
