@@ -33,8 +33,8 @@ This plugin offers high-performance and customizable translation features.
      ReiPatcher is located at <GameDir>/<GameName>_Data/Managed/Translators  
    - BepinEx位于<GameDir>/BepinEx/plugins/XUnity.AutoTranslator/Translators  
      BepinEx is located at <GameDir>/BepinEx/plugins/XUnity.AutoTranslator/Translators  
-3. 配置 `Config.ini` 文件以使用 "AutoLLMTranslate" 端点。  
-   Configure the `Config.ini` file to use the "AutoLLMTranslate" endpoint.  
+3. 配置 `Config.ini` 文件以使用 "AutoLLMTranslate" 端点。注意在不同基础插件中Config.ini文件的名字和路径都可能不同。
+   Configure the `Config.ini` file to use the "AutoLLMTranslate" endpoint. Note that the name and path of the Config.ini file may vary in different environments.  
 
 ## 配置  
 ### Config.ini  
