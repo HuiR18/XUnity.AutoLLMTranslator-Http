@@ -21,7 +21,6 @@ public class TranslatorTask
         public string[]? result { get; set; } = null;
         public int reqID { get; set; }
         public int retryCount { get; set; } = 0;
-
         private TaskState _state = TaskState.Waiting;
         private readonly object _stateLock = new object();
         private readonly TaskCompletionSource<bool> _completionSource = new TaskCompletionSource<bool>();
@@ -52,7 +51,7 @@ public class TranslatorTask
     }
 
 
-    private string? _apiKey;
+    private string[]? _apiKeys;
     private string? _model;
     private string? _requirement;
     private string? _url;
@@ -75,9 +74,10 @@ public class TranslatorTask
     //最近翻译
     List<string> recentTranslate = new List<string>();
 
+    private int _currentKeyIndex = 0;
     public void Init(IInitializationContext context)
     {
-        _apiKey = context.GetOrCreateSetting("AutoLLM", "APIKey", "");
+        _apiKeys = context.GetOrCreateSetting("AutoLLM", "APIKey", "").Split(';');
         _model = context.GetOrCreateSetting("AutoLLM", "Model", "gpt-4o");
         _requirement = context.GetOrCreateSetting("AutoLLM", "Requirement", "");
         _url = context.GetOrCreateSetting("AutoLLM", "URL", "https://api.openai.com/v1/chat/completions");
@@ -106,7 +106,7 @@ public class TranslatorTask
 
         DestinationLanguage = context.DestinationLanguage;
         SourceLanguage = context.SourceLanguage;
-        if (string.IsNullOrEmpty(_apiKey) && !_url.Contains("localhost") && !_url.Contains("127.0.0.1") && !_url.Contains("192.168."))
+        if ((_apiKeys?.Length ?? 0) == 0 && !_url.Contains("localhost") && !_url.Contains("127.0.0.1") && !_url.Contains("192.168."))
         {
             throw new Exception("The AutoLLM endpoint requires an API key which has not been provided.");
         }
@@ -265,6 +265,20 @@ public class TranslatorTask
     int curProcessingCount = 0;
     private readonly object _lockObject = new object();
 
+
+    private string GetNextApiKey()
+    {
+        if (_apiKeys == null || _apiKeys.Length == 0)
+        {
+            return string.Empty;
+        }
+        lock (_apiKeys)
+        {
+            var key = _apiKeys[_currentKeyIndex];
+            _currentKeyIndex = (_currentKeyIndex + 1) % _apiKeys.Length;
+            return key;
+        }
+    }
     async Task ProcessTaskBatch(List<TaskData> tasks)
     {
         int hashkey = tasks.GetHashCode();
@@ -312,9 +326,6 @@ public class TranslatorTask
                 { "model", _model },
                 { "temperature", 0.1 },
                 { "max_tokens", 4000 },
-                { "top_p", 1 },
-                { "frequency_penalty", 0 },
-                { "presence_penalty", 0 },
                 { "messages", messages }
             };
             if (!string.IsNullOrEmpty(_modelParams))
@@ -337,137 +348,148 @@ public class TranslatorTask
                 }
             }
 
-            using (var client = new WebClient())
+
+
+            // 创建HTTP请求
+            var request = (HttpWebRequest)WebRequest.Create(_url);
+            request.Method = "POST";
+            request.Headers.Add("Authorization", $"Bearer {GetNextApiKey()}");
+            request.ContentType = "application/json";
+
+            // 写入请求体
+            requestBody.Add("stream", true);
+            var requestJson = JsonConvert.SerializeObject(requestBody);
+            //Log($"请求: {requestJson}");
+            using (var streamWriter = new StreamWriter(request.GetRequestStream()))
             {
-                client.Headers[HttpRequestHeader.Authorization] = $"Bearer {_apiKey}";
-                client.Headers[HttpRequestHeader.ContentType] = "application/json";
+                await streamWriter.WriteAsync(requestJson);
+            }
 
-                // 创建HTTP请求
-                var request = (HttpWebRequest)WebRequest.Create(_url);
-                request.Method = "POST";
-                request.Headers.Add("Authorization", $"Bearer {_apiKey}");
-                request.ContentType = "application/json";
-
-                // 写入请求体
-                requestBody.Add("stream", true);
-                var requestJson = JsonConvert.SerializeObject(requestBody);
-                //Log($"请求: {requestJson}");
-                using (var streamWriter = new StreamWriter(request.GetRequestStream()))
+            // 获取响应
+            using (var response = (HttpWebResponse)await request.GetResponseAsync())
+            using (var stream = response.GetResponseStream())
+            using (var reader = new StreamReader(stream))
+            {
+                var lineResponse = "";
+                var fullResponse = "";
+                string? line;
+                var i = 0;
+                while ((line = await reader.ReadLineAsync()) != null)
                 {
-                    await streamWriter.WriteAsync(requestJson);
-                }
+                    if (string.IsNullOrEmpty(line)) continue;
+                    if (!line.StartsWith("data: ")) continue;
 
-                // 获取响应
-                using (var response = (HttpWebResponse)await request.GetResponseAsync())
-                using (var stream = response.GetResponseStream())
-                using (var reader = new StreamReader(stream))
-                {
-                    var lineResponse = "";
-                    var fullResponse = "";
-                    string? line;
-                    var i = 0;
-                    while ((line = await reader.ReadLineAsync()) != null)
+                    var data = line.Substring(6);
+                    if (data == "[DONE]") break;
+
+                    try
                     {
-                        if (string.IsNullOrEmpty(line)) continue;
-                        if (!line.StartsWith("data: ")) continue;
-
-                        var data = line.Substring(6);
-                        if (data == "[DONE]") break;
-
-                        try
+                        var json = JObject.Parse(data);
+                        var content = json["choices"]?[0]?["delta"]?["content"]?.ToString();
+                        if (!string.IsNullOrEmpty(content))
                         {
-                            var json = JObject.Parse(data);
-                            var content = json["choices"]?[0]?["delta"]?["content"]?.ToString();
-                            if (!string.IsNullOrEmpty(content))
+                            lineResponse += content;
+                            //Log($"流: {content} ::: {lineResponse}");
+                            fullResponse += content;
+                            if (lineResponse.Contains("</think>"))
+                                lineResponse = Regex.Replace(lineResponse, "<think>.*?</think>", "", RegexOptions.Singleline);
+                            if (lineResponse.Contains("</context_think>"))
+                                lineResponse = Regex.Replace(lineResponse, "<context_think>.*?</context_think>", "", RegexOptions.Singleline);
+                            if (string.IsNullOrEmpty(lineResponse))
+                                continue;
+                            Logger.Debug($"{hashkey} 流0: |{lineResponse}|");
+                            var lineResponseTxts = lineResponse.Split('\n');
+                            int point = 0;
+                            foreach (var txt in lineResponseTxts)
                             {
-                                lineResponse += content;
-                                //Log($"流: {content} ::: {lineResponse}");
-                                fullResponse += content;
-                                if (lineResponse.Contains("</think>"))
-                                    lineResponse = Regex.Replace(lineResponse, "<think>.*?</think>", "", RegexOptions.Singleline);
-                                if (lineResponse.Contains("</context_think>"))
-                                    lineResponse = Regex.Replace(lineResponse, "<context_think>.*?</context_think>", "", RegexOptions.Singleline);
-                                if (string.IsNullOrEmpty(lineResponse))
-                                    continue;
-                                Logger.Debug($"{hashkey} 流0: |{lineResponse}|");
-                                var lineResponseTxts = lineResponse.Split('\n');
-                                int point = 0;
-                                foreach (var txt in lineResponseTxts)
+                                Logger.Debug($"{hashkey} 流1: |{txt}| len: {txt.Length}");
+                                point += Math.Max(1, txt.Length);
+                                var rs = txt.Trim();
+                                if (rs.Count(c => c == '\"') < 2)
                                 {
-                                    Logger.Debug($"{hashkey} 流1: |{txt}| len: {txt.Length}");
-                                    point += Math.Max(1, txt.Length);
-                                    var rs = txt.Trim();                                    
-                                    if (rs.Count(c => c == '\"') < 2)
+                                    continue;
+                                }
+                                //Log($"{hashkey} 流0_2: {rs}");
+                                if (rs.EndsWith("\"")
+                                    // || rs.EndsWith("\",")
+                                    // || rs.EndsWith("\"]")
+                                    // || rs.EndsWith("\",]")
+                                    )
+                                {
+                                    Logger.Debug($"{hashkey} 流2: {rs}");
+                                    //找到[NUM]="TEXT"中间的NUM和TEXT
+                                    var match = Regex.Match(rs, @"\[(\d+)\]=""(.*?)""");
+                                    if (!match.Success)
                                     {
-                                        continue;
+                                        throw new Exception($"翻译结果错误 1: {fullResponse}");
                                     }
-                                    //Log($"{hashkey} 流0_2: {rs}");
-                                    if (rs.EndsWith("\"")
-                                        // || rs.EndsWith("\",")
-                                        // || rs.EndsWith("\"]")
-                                        // || rs.EndsWith("\",]")
-                                        )
+                                    var num = -1;
+                                    int.TryParse(match.Groups[1].Value, out num);
+                                    if (num < 1 || num > tasks.Count)
                                     {
-                                        Logger.Debug($"{hashkey} 流2: {rs}");
-                                        //找到[NUM]="TEXT"中间的NUM和TEXT
-                                        var match = Regex.Match(rs, @"\[(\d+)\]=""(.*?)""");
-                                        if (!match.Success)
-                                        {
-                                            throw new Exception($"翻译结果错误 1: {fullResponse}");
-                                        }
-                                        var num = -1;
-                                        int.TryParse(match.Groups[1].Value, out num);
-                                        if (num < 1 || num > tasks.Count)
-                                        {
-                                            throw new Exception($"翻译结果错误 2: {fullResponse}");
-                                        }
-                                        rs = match.Groups[2].Value;
-                                        if (string.IsNullOrEmpty(rs))
-                                        {
-                                            throw new Exception($"翻译结果错误 3: {fullResponse}");
-                                        }
-                                        if (_halfWidth)
-                                        {
-                                            //将全角符号转换为半角符号
-                                            rs = Regex.Replace(rs, @"[！＂＃＄％＆＇（）＊＋，－．／０１２３４５６７８９：；＜＝＞？＠［＼］＾＿｀｛｜｝～]", m => ((char)(m.Value[0] - 0xFEE0)).ToString());
-                                        }
-                                        rs = UnEscapeSpecialCharacters(rs);
-                                        //Log($"流2: {lineResponse}");
-                                        var task = tasks[num - 1];
-                                        task.result = new string[] { translateDB.FindTerminology(task.texts[0]) ?? rs };
-                                        task.state = TaskData.TaskState.Completed;
-                                        Logger.Debug($"{hashkey} 流OK: {rs}");
-                                        lock (recentTranslate)
-                                        {
-                                            if (recentTranslate.Count > 10)
-                                                recentTranslate.RemoveAt(0);
-                                            recentTranslate.Add($"{task.texts[0]} === {task.result[0]}");
-                                        }
-                                        if (translateDB.AddData(task.texts[0], task.result[0]))
-                                            translateDB.SortData();
-                                        i++;
-                                        var hlineResponse = lineResponse;
-                                        lineResponse = lineResponse.Substring(point);
-                                        Logger.Debug($"{hashkey} 流截取后: {lineResponse}|olen:{hlineResponse.Length} | point: {point}");
-                                        point = 0;                                       
+                                        throw new Exception($"翻译结果错误 2: {fullResponse}");
                                     }
+                                    rs = match.Groups[2].Value;
+                                    if (string.IsNullOrEmpty(rs))
+                                    {
+                                        throw new Exception($"翻译结果错误 3: {fullResponse}");
+                                    }
+                                    if (_halfWidth)
+                                    {
+                                        //将全角符号转换为半角符号
+                                        rs = Regex.Replace(rs, @"[！＂＃＄％＆＇（）＊＋，－．／０１２３４５６７８９：；＜＝＞？＠［＼］＾＿｀｛｜｝～]", m => ((char)(m.Value[0] - 0xFEE0)).ToString());
+                                    }
+                                    rs = UnEscapeSpecialCharacters(rs);
+                                    //Log($"流2: {lineResponse}");
+                                    var task = tasks[num - 1];
+                                    task.result = new string[] { translateDB.FindTerminology(task.texts[0]) ?? rs };
+                                    task.state = TaskData.TaskState.Completed;
+                                    Logger.Debug($"{hashkey} 流OK: {rs}");
+                                    lock (recentTranslate)
+                                    {
+                                        if (recentTranslate.Count > 10)
+                                            recentTranslate.RemoveAt(0);
+                                        recentTranslate.Add($"{task.texts[0]} === {task.result[0]}");
+                                    }
+                                    if (translateDB.AddData(task.texts[0], task.result[0]))
+                                        translateDB.SortData();
+                                    i++;
+                                    var hlineResponse = lineResponse;
+                                    lineResponse = lineResponse.Substring(point);
+                                    Logger.Debug($"{hashkey} 流截取后: {lineResponse}|olen:{hlineResponse.Length} | point: {point}");
+                                    point = 0;
                                 }
                             }
                         }
-                        catch (JsonReaderException ex)
-                        {
-                            Logger.Error($"解析流响应出错: {ex.Message}");
-                        }
                     }
-
-                    Logger.Debug($"full流: {fullResponse}");
+                    catch (JsonReaderException ex)
+                    {
+                        Logger.Error($"解析流响应出错: {ex.Message}");
+                    }
                 }
+
+                Logger.Debug($"full流: {fullResponse}");
             }
 
         }
+        catch (WebException ex)
+        {
+            Logger.Error($"翻译失败: {ex.Message}");
+            if (ex.Response != null)
+            {
+                using (var errorResponse = (HttpWebResponse)ex.Response)
+                {
+                    using (var reader = new StreamReader(errorResponse.GetResponseStream()))
+                    {
+                        var errorText = reader.ReadToEnd();
+                        Logger.Error($"服务器错误响应: {errorText}");
+                    }
+                }
+            }
+        }
         catch (Exception ex)
         {
-            Logger.Error($"Batch翻译失败: {ex.Message}");
+            Logger.Error($"翻译失败: {ex.Message}");
         }
         finally
         {

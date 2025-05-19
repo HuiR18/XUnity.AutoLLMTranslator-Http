@@ -97,7 +97,7 @@ Log2File=False
 Configuration description:
 - `Model`：用于翻译的模型。  The model used for translation.  
 - `URL`：LLM 服务器的 URL，一般以/v1结尾。也可以是/chat/completions的完整路径。  URL of the LLM server, usually ending with `/v1`. It can also be the full path to `/chat/completions`.  
-- [OPTION]`APIKey`：LLM 服务器的 API 密钥。如果使用本地模型，可以留空。 API key for the LLM server. If using a local model, this can be left blank.
+- [OPTION]`APIKey`：LLM 服务器的 API 密钥。如果使用本地模型，可以留空。你可以使用;分割多个key来实现负载均衡。 API key for the LLM server. If using a local model, this can be left blank. You can use `;` to separate multiple keys for load balancing.
 - [OPTION]`Requirement`：额外的翻译需求或指令，例如:使用莎士比亚的风格进行翻译。  Additional translation requirements or instructions, e.g., translating in Shakespearean style.   
 - [OPTION]`Terminology`：术语表，使用|隔开不同术语，使用==连接原文和翻译。例如：Lorien==罗林|Skadi==斯卡蒂  。Terminology list, with different terms separated by `|` and original text and translation connected by `==`,e.g.,Lorien==罗林|Skadi==斯卡蒂.    
 - [OPTION]`GameName`: 游戏名字  Name of the game  
