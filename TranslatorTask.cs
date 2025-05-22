@@ -77,7 +77,7 @@ public class TranslatorTask
     private int _currentKeyIndex = 0;
     public void Init(IInitializationContext context)
     {
-        _apiKeys = context.GetOrCreateSetting("AutoLLM", "APIKey", "").Split(';');
+        _apiKeys = context.GetOrCreateSetting("AutoLLM", "APIKey", "")?.Split(';') ?? new string[] { "NOKEY"};
         _model = context.GetOrCreateSetting("AutoLLM", "Model", "gpt-4o");
         _requirement = context.GetOrCreateSetting("AutoLLM", "Requirement", "");
         _url = context.GetOrCreateSetting("AutoLLM", "URL", "https://api.openai.com/v1/chat/completions");
