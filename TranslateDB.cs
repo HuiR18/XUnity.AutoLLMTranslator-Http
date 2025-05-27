@@ -1,6 +1,8 @@
 ﻿using XUnity.AutoTranslator.Plugin.Core.Endpoints;
 using FuzzyString;
-
+using System.Collections.Generic;
+using System;
+using System.IO;
 public class TranslateDB
 {
 
@@ -95,7 +97,7 @@ public class TranslateDB
       //遍历每一行
       foreach (string line in lines)
       {
-        if (string.IsNullOrWhiteSpace(line))
+        if (string.IsNullOrEmpty(line))
           continue;
         //分割字符串
         // Split by the first occurrence of "=" that is not preceded by "\" (escaped)
@@ -161,9 +163,10 @@ public class TranslateDB
 
   public void SortData()
   {
-    //translateDatas[0]的长度排序
     lock (translateDatas)
+    {
       translateDatas.Sort((a, b) => a[0].Length.CompareTo(b[0].Length));
+    }
   }
 
   public List<string> Search(List<string> keys, int Length = 2000)

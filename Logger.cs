@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography.X509Certificates;
+﻿using System;
+using System.Security.Cryptography.X509Certificates;
 using XUnity.Common.Logging;
 
 public static class Logger
@@ -29,28 +30,34 @@ public static class Logger
     }
   }
 
+  private static readonly object _logLock = new object();
+
   static void Log(string message, LogLevel level)
   {
     if (level > _logLevel) return;
     message = $"[{DateTime.Now:HH:mm:ss}] {message}";
     var logMessage = $"[ALLM_{level.ToString()[0]}]: {message}";
-    if (level == LogLevel.Error)
+    
+    lock (_logLock)
     {
-      XuaLogger.Common.Error(logMessage);
+      if (level == LogLevel.Error)
+      {
+        XuaLogger.Common.Error(logMessage);
+      }
+      else if (level == LogLevel.Warning)
+      {
+        XuaLogger.Common.Warn(logMessage);
+      }
+      else if (level == LogLevel.Debug)
+      {
+        XuaLogger.Common.Debug(logMessage);
+      }
+      else
+      {
+        XuaLogger.Common.Info(logMessage);
+      }
+      _logger?.WriteLine(logMessage);
     }
-    else if (level == LogLevel.Warning)
-    {
-      XuaLogger.Common.Warn(logMessage);
-    }
-    else if (level == LogLevel.Debug)
-    {
-      XuaLogger.Common.Debug(logMessage);
-    }
-    else
-    {
-      XuaLogger.Common.Info(logMessage);
-    }
-    _logger?.WriteLine(logMessage);
   }
 
   public static void Info(string message)

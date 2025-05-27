@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System;
 using XUnity.AutoTranslator.Plugin.Core.Endpoints;
 using XUnity.AutoTranslator.Plugin.Core.Endpoints.Www;
 
@@ -36,7 +37,7 @@ internal class LLMTranslatorEndpoint : WwwEndpoint
 
     public override void OnCreateRequest(IWwwRequestCreationContext context)
     {
-        Logger.Debug($"翻译请求: {context.GetHashCode()}");
+        Logger.Debug($"翻译请求: {context.UntranslatedTexts[0]}");
         var requestBody = new
         {
             texts = context.UntranslatedTexts

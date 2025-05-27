@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFramework>net45</TargetFramework>
-		<ImplicitUsings>enable</ImplicitUsings>
+		<TargetFramework>net35</TargetFramework>
+		<ImplicitUsings>disable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<LangVersion>latest</LangVersion>
 		<GameDir>E:\SteamLibrary\steamapps\common\Death Must Die\Death Must Die_Data\Managed\Translators\</GameDir>
@@ -23,11 +23,9 @@
 	<ItemGroup>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
 	</ItemGroup>
-
 	<ItemGroup>
 		<PackageReference Include="ILRepack.MSBuild.Task" Version="2.0.13" PrivateAssets="All" />
 	</ItemGroup>
-
 	<Target Name="ILRepack" AfterTargets="Build">
 		<PropertyGroup>
 			<WorkingDirectory>$(MSBuildThisFileDirectory)bin\$(Configuration)\$(TargetFramework)</WorkingDirectory>

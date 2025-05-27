@@ -5,6 +5,11 @@ using System.Text.RegularExpressions;
 using XUnity.AutoTranslator.Plugin.Core.Endpoints;
 using System.Text;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Collections.Generic;
+using System.IO;
+using System;
+using System.Linq;
 
 public class TranslatorTask
 {
@@ -15,38 +20,43 @@ public class TranslatorTask
             Waiting,
             Processing,
             Completed,
-            Failed
+            Failed,
+            Closed,
         }
+        public HttpListenerContext? context { get; set; }
         public string[] texts { get; set; }
-        public string[]? result { get; set; } = null;
+        public string[] result { get; set; }
         public int reqID { get; set; }
-        public int retryCount { get; set; } = 0;
-        private TaskState _state = TaskState.Waiting;
-        private readonly object _stateLock = new object();
-        private readonly TaskCompletionSource<bool> _completionSource = new TaskCompletionSource<bool>();
+        public int retryCount { get; set; }
+        public TaskState state = TaskState.Waiting;
 
-        public TaskState state
+        //响应
+        public bool TryRespond()
         {
-            get
+            try
             {
-                lock (_stateLock) return _state;
-            }
-            set
-            {
-                lock (_stateLock)
+                if (context == null || context.Response == null) return false;
+                if (state == TaskState.Completed || state == TaskState.Failed)
                 {
-                    _state = value;
-                    if (_state == TaskState.Completed || _state == TaskState.Failed)
+                    var rs = new
                     {
-                        _completionSource.TrySetResult(true);
-                    }
+                        texts = result
+                    };
+                    // 返回响应
+                    string responseString = JsonConvert.SerializeObject(rs);
+                    byte[] buffer = Encoding.UTF8.GetBytes(responseString);
+                    context.Response.ContentLength64 = buffer.Length;
+                    context.Response.OutputStream.Write(buffer, 0, buffer.Length);
+                    context.Response.Close();
+                    state = TaskState.Closed;
+                    return true;
                 }
             }
-        }
-
-        public Task WaitOne()
-        {
-            return _completionSource.Task;
+            catch (Exception ex)
+            {
+                Logger.Error($"响应失败: {ex.Message}");
+            }            
+            return false;
         }
     }
 
@@ -69,7 +79,6 @@ public class TranslatorTask
     private string _modelParams = "";
     List<TaskData> taskDatas = new List<TaskData>();
     TranslateDB translateDB = new TranslateDB();
-    //Dictionary<string, string> translateData = new Dictionary<string, string>();
     HttpListener listener = new HttpListener();
     //最近翻译
     List<string> recentTranslate = new List<string>();
@@ -77,7 +86,7 @@ public class TranslatorTask
     private int _currentKeyIndex = 0;
     public void Init(IInitializationContext context)
     {
-        _apiKeys = context.GetOrCreateSetting("AutoLLM", "APIKey", "")?.Split(';') ?? new string[] { "NOKEY"};
+        _apiKeys = context.GetOrCreateSetting("AutoLLM", "APIKey", "")?.Split(';') ?? new string[] { "NOKEY" };
         _model = context.GetOrCreateSetting("AutoLLM", "Model", "gpt-4o");
         _requirement = context.GetOrCreateSetting("AutoLLM", "Requirement", "");
         _url = context.GetOrCreateSetting("AutoLLM", "URL", "https://api.openai.com/v1/chat/completions");
@@ -120,16 +129,14 @@ public class TranslatorTask
 
 
         // Start a separate thread for HTTP listener
-        Task.Run(async () =>
+        Thread listenerThread = new Thread(() =>
         {
             try
             {
                 while (true)
                 {
-                    // Wait for incoming request
-                    var context = await listener.GetContextAsync();
-                    // Process request
-                    ProcessRequest(context);
+                    var ctx = listener.GetContext();
+                    ProcessRequest(ctx);
                 }
             }
             catch (Exception ex)
@@ -137,13 +144,19 @@ public class TranslatorTask
                 Logger.Error($"HTTP listener error: {ex.Message}");
             }
         });
-        Task.Run(() => Polling());
+        listenerThread.IsBackground = true;
+        listenerThread.Start();
+
+        Thread pollingThread = new Thread(Polling);
+        pollingThread.IsBackground = true;
+        pollingThread.Start();
     }
 
-    async private void ProcessRequest(HttpListenerContext context)
+    private void ProcessRequest(HttpListenerContext context)
     {
         try
         {
+            Logger.Debug($"处理请求: {context.Request.HttpMethod} {context.Request.Url}");
             HttpListenerRequest request = context.Request;
             HttpListenerResponse response = context.Response;
             if (request.HttpMethod == "POST")
@@ -155,17 +168,8 @@ public class TranslatorTask
                     string requestBody = reader.ReadToEnd();
                     //Log($"Received POST request with body: {requestBody}");
                     var requestData = JObject.Parse(requestBody);
-                    var texts = requestData["texts"]?.ToObject<string[]>() ?? new string[0];
-                    var task = await AddTask(texts);
-                    var rs = new
-                    {
-                        texts = task.result
-                    };
-                    // 返回响应
-                    string responseString = JsonConvert.SerializeObject(rs);
-                    byte[] buffer = Encoding.UTF8.GetBytes(responseString);
-                    response.ContentLength64 = buffer.Length;
-                    response.OutputStream.Write(buffer, 0, buffer.Length);
+                    var texts = requestData["texts"] != null ? requestData["texts"].ToObject<string[]>() : new string[0];
+                    var task = AddTask(texts, context);
                 }
             }
             if (request.HttpMethod == "GET")
@@ -175,17 +179,19 @@ public class TranslatorTask
                 byte[] buffer = Encoding.UTF8.GetBytes(responseString);
                 response.ContentLength64 = buffer.Length;
                 response.OutputStream.Write(buffer, 0, buffer.Length);
+                response.Close();
             }
         }
         catch (Exception ex)
         {
             Logger.Error($"处理请求时发生错误: {ex.Message}");
-        }
-        finally
-        {
-            // 关闭响应
             context.Response.Close();
         }
+        // finally
+        // {
+        //     // 关闭响应
+        //     context.Response.Close();
+        // }
     }
 
     List<TaskData> SelectTasks()
@@ -222,9 +228,10 @@ public class TranslatorTask
         return tasks;
     }
 
-    async public Task<TaskData> AddTask(string[] texts)
+    public TaskData AddTask(string[] texts, HttpListenerContext context)
     {
-        var task = new TaskData() { texts = texts };
+        Logger.Debug($"添加任务: {string.Join(", ", texts)}");
+        var task = new TaskData() { texts = texts, context = context };
 
         // 添加任务时上锁
         lock (_lockObject)
@@ -232,14 +239,14 @@ public class TranslatorTask
             taskDatas.Insert(0, task);
         }
 
-        // 等待任务完成
-        await task.WaitOne();
+        // // 等待任务完成
+        // task.WaitOne();
 
-        // 移除任务时上锁
-        lock (_lockObject)
-        {
-            taskDatas.Remove(task);
-        }
+        // // 移除任务时上锁
+        // lock (_lockObject)
+        // {
+        //     taskDatas.Remove(task);
+        // }
 
         return task;
     }
@@ -279,7 +286,16 @@ public class TranslatorTask
             return key;
         }
     }
-    async Task ProcessTaskBatch(List<TaskData> tasks)
+
+    void TaskRespond(TaskData task)
+    {
+        task.TryRespond();
+        lock (_lockObject)
+        {
+            taskDatas.Remove(task);
+        }
+    }
+    void ProcessTaskBatch(List<TaskData> tasks)
     {
         int hashkey = tasks.GetHashCode();
         try
@@ -298,10 +314,10 @@ public class TranslatorTask
             .Replace("{{GAMENAME}}", _gameName)
             .Replace("{{GAMEDESC}}", _gameDesc)
             .Replace("{{OTHER}}", _requirement)
-            .Replace("{{HISTORY}}", string.Join("\n", translateDB.Search(texts, 1000)))
+            .Replace("{{HISTORY}}", string.Join("\n", translateDB.Search(texts, 1000).ToArray()))
             .Replace("{{TARGET_LAN}}", DestinationLanguage)
             .Replace("{{SOURCE_LAN}}", SourceLanguage)
-            .Replace("{{RECENT}}", string.Join("\n", recentTranslate));
+            .Replace("{{RECENT}}", string.Join("\n", recentTranslate.ToArray()));
             var otxt = "";
             int index = 1;
             foreach (var data in texts)
@@ -362,19 +378,19 @@ public class TranslatorTask
             //Log($"请求: {requestJson}");
             using (var streamWriter = new StreamWriter(request.GetRequestStream()))
             {
-                await streamWriter.WriteAsync(requestJson);
+                streamWriter.Write(requestJson);
             }
 
             // 获取响应
-            using (var response = (HttpWebResponse)await request.GetResponseAsync())
+            using (var response = (HttpWebResponse)request.GetResponse())
             using (var stream = response.GetResponseStream())
             using (var reader = new StreamReader(stream))
             {
                 var lineResponse = "";
                 var fullResponse = "";
-                string? line;
+                string line;
                 var i = 0;
-                while ((line = await reader.ReadLineAsync()) != null)
+                while ((line = reader.ReadLine()) != null)
                 {
                     if (string.IsNullOrEmpty(line)) continue;
                     if (!line.StartsWith("data: ")) continue;
@@ -385,7 +401,7 @@ public class TranslatorTask
                     try
                     {
                         var json = JObject.Parse(data);
-                        var content = json["choices"]?[0]?["delta"]?["content"]?.ToString();
+                        var content = json["choices"] != null && json["choices"][0] != null && json["choices"][0]["delta"] != null ? json["choices"][0]["delta"]["content"].ToString() : null;
                         if (!string.IsNullOrEmpty(content))
                         {
                             lineResponse += content;
@@ -405,19 +421,17 @@ public class TranslatorTask
                                 Logger.Debug($"{hashkey} 流1: |{txt}| len: {txt.Length}");
                                 point += Math.Max(1, txt.Length);
                                 var rs = txt.Trim();
+                                if (rs.Length == 0 || rs.IndexOf('\"') < 0)
+                                {
+                                    continue;
+                                }
                                 if (rs.Count(c => c == '\"') < 2)
                                 {
                                     continue;
                                 }
-                                //Log($"{hashkey} 流0_2: {rs}");
-                                if (rs.EndsWith("\"")
-                                    // || rs.EndsWith("\",")
-                                    // || rs.EndsWith("\"]")
-                                    // || rs.EndsWith("\",]")
-                                    )
+                                if (rs.EndsWith("\""))
                                 {
                                     Logger.Debug($"{hashkey} 流2: {rs}");
-                                    //找到[NUM]="TEXT"中间的NUM和TEXT
                                     var match = Regex.Match(rs, @"\[(\d+)\]=""(.*?)""");
                                     if (!match.Success)
                                     {
@@ -444,6 +458,7 @@ public class TranslatorTask
                                     var task = tasks[num - 1];
                                     task.result = new string[] { translateDB.FindTerminology(task.texts[0]) ?? rs };
                                     task.state = TaskData.TaskState.Completed;
+                                    TaskRespond(task);
                                     Logger.Debug($"{hashkey} 流OK: {rs}");
                                     lock (recentTranslate)
                                     {
@@ -510,6 +525,7 @@ public class TranslatorTask
                     {
                         Logger.Error($"重试翻译依然失败，没救了:" + task.texts[0]);
                         task.state = TaskData.TaskState.Failed;
+                        TaskRespond(task);
                     }
                 }
             }
@@ -519,16 +535,16 @@ public class TranslatorTask
     }
 
     //轮询
-    // 优化 Polling 方法
-    public async Task Polling()
+    public void Polling()
     {
         while (true)
         {
             try
             {
-                await Task.Delay(_pollingInterval);
-                if (curProcessingCount > 0)
-                    Logger.Debug($"Polling curProcessingCount: {curProcessingCount}/{_parallelCount} TASKS: {taskDatas.Count}");
+
+                Thread.Sleep(_pollingInterval);
+                //if (curProcessingCount > 0)
+                Logger.Debug($"Polling curProcessingCount: {curProcessingCount}/{_parallelCount} TASKS: {taskDatas.Count}");
                 if (curProcessingCount >= _parallelCount)
                 {
                     continue;
@@ -538,7 +554,7 @@ public class TranslatorTask
                 lock (_lockObject)
                 {
                     tasks = SelectTasks();
-                    //Log($"Polling SelectTasks: {tasks.Count}");
+                    //Logger.Debug($"Polling SelectTasks: {tasks.Count}");
                     while (tasks.Count > 0 && curProcessingCount < _parallelCount)
                     {
                         curProcessingCount++;
@@ -556,7 +572,10 @@ public class TranslatorTask
                 {
                     foreach (var tasklist in taskDatass)
                     {
-                        _ = ProcessTaskBatch(tasklist);
+                        var taskListCopy = new List<TaskData>(tasklist); // Create a copy for thread safety
+                        Thread processingThread = new Thread(() => ProcessTaskBatch(taskListCopy));
+                        processingThread.IsBackground = true;
+                        processingThread.Start();
                     }
                 }
                 // Log("Polling End");

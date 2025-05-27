@@ -22,6 +22,10 @@ This plugin offers high-performance and customizable translation features.
   **Introduces a simple context mechanism to unify translation context and terminology as much as possible**  
 - **支持自定义术语等功能，实现更个性化的翻译**  
   **Supports custom terminology and other features for more personalized translations**  
+- **支持多key下的负载均衡**
+  **Supports load balancing under multiple keys**
+- **兼容.net3.5及以上框架**
+  **Compatible with .NET 3.5 and above**
 
 ## 安装  
 ## Installation
