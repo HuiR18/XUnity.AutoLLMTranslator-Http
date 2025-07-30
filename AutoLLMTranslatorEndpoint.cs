@@ -2,9 +2,10 @@
 using Newtonsoft.Json.Linq;
 using System;
 using XUnity.AutoTranslator.Plugin.Core.Endpoints;
-using XUnity.AutoTranslator.Plugin.Core.Endpoints.Www;
+using XUnity.AutoTranslator.Plugin.Core.Endpoints.Http;
+using XUnity.AutoTranslator.Plugin.Core.Web;
 
-internal class LLMTranslatorEndpoint : WwwEndpoint
+internal class LLMTranslatorEndpoint : HttpEndpoint
 {
 
     #region Since all batching and concurrency are handled within TranslatorTask, please do not modify these two parameters.
@@ -35,19 +36,23 @@ internal class LLMTranslatorEndpoint : WwwEndpoint
         task.Init(context);
     }
 
-    public override void OnCreateRequest(IWwwRequestCreationContext context)
+    public override void OnCreateRequest(IHttpRequestCreationContext context)
     {
         Logger.Debug($"翻译请求: {context.UntranslatedTexts[0]}");
         var requestBody = new
         {
             texts = context.UntranslatedTexts
         };
-        context.Complete(new WwwRequestInfo("http://127.0.0.1:20000/", JsonConvert.SerializeObject(requestBody)));
+        context.Complete(new XUnityWebRequest(
+            "POST", 
+            "http://127.0.0.1:20000/", 
+            JsonConvert.SerializeObject(requestBody)
+        ));
     }
 
-    public override void OnExtractTranslation(IWwwTranslationExtractionContext context)
+    public override void OnExtractTranslation(IHttpTranslationExtractionContext context)
     {
-        var data = context.ResponseData;
+        var data = context.Response.Data;
 
         JObject jsonResponse;
         jsonResponse = JObject.Parse(data);
